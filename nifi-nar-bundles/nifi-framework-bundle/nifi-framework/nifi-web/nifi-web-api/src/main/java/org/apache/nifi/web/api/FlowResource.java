@@ -173,6 +173,9 @@ public class FlowResource extends ApplicationResource {
     private NiFiServiceFacade serviceFacade;
     private Authorizer authorizer;
 
+    // custom user properties
+    private static final String YOUTUBE_URL = "nifi.custom.url.youtube.channel";
+
     private ProcessorResource processorResource;
     private InputPortResource inputPortResource;
     private OutputPortResource outputPortResource;
@@ -1477,7 +1480,7 @@ public class FlowResource extends ApplicationResource {
         // get the content viewer url
         final NiFiProperties properties = getProperties();
         aboutDTO.setContentViewerUrl(properties.getProperty(NiFiProperties.CONTENT_VIEWER_URL));
-
+        aboutDTO.setYouTubeChannelUrl(properties.getProperty(YOUTUBE_URL));
         final Bundle frameworkBundle = NarClassLoadersHolder.getInstance().getFrameworkBundle();
         if (frameworkBundle != null) {
             final BundleDetails frameworkDetails = frameworkBundle.getBundleDetails();

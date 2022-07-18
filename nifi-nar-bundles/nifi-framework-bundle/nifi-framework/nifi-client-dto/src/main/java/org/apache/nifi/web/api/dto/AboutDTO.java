@@ -35,6 +35,7 @@ public class AboutDTO {
 
     private String uri;
     private String contentViewerUrl;
+    private String youTubeChannelUrl;
     private Date timezone;
 
     private String buildTag;
@@ -101,6 +102,21 @@ public class AboutDTO {
 
     public void setContentViewerUrl(String contentViewerUrl) {
         this.contentViewerUrl = contentViewerUrl;
+    }
+
+    /**
+     * @return the URL for My YouTube Channel
+     */
+    @ApiModelProperty(
+            value = "The URL for My YouTube Channel"
+    )
+
+    public String getYouTubeChannelUrl() {
+        return youTubeChannelUrl;
+    }
+
+    public void setYouTubeChannelUrl(String youTubeChannelUrl) {
+        this.youTubeChannelUrl = youTubeChannelUrl;
     }
 
     /**
