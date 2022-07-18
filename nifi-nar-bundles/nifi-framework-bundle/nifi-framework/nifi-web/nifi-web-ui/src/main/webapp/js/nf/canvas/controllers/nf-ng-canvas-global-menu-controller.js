@@ -361,6 +361,7 @@
                         var aboutDetails = response.about;
                         // set the document title and the about title
                         document.title = aboutDetails.title;
+                        $('#nf-youtube-link').attr("href", aboutDetails.youTubeChannelUrl);
                         $('#nf-version').text(aboutDetails.version);
                         var showVersionDetail = false;
                         if (aboutDetails.buildTag && aboutDetails.buildTag !== 'HEAD') {

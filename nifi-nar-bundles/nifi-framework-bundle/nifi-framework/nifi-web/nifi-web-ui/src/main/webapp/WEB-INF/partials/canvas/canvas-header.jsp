@@ -16,7 +16,7 @@
 --%>
 <%@ page contentType="text/html" pageEncoding="UTF-8" session="false" %>
 <md-toolbar id="header" layout-align="space-between center" layout="row" class="md-small md-accent md-hue-1">
-    <img id="nifi-logo" src="images/nifi-logo.svg">
+    <img id="nifi-logo" src="images/nifi_youtube_logo_v2.png">
     <div flex layout="row" layout-align="space-between center">
         <div id="component-container">
             <button title="{{appCtrl.serviceProvider.headerCtrl.toolboxCtrl.config.type.processor}}"
@@ -77,6 +77,14 @@
             </button>
         </div>
         <div layout="row" layout-align="space-between center">
+            <div class="external-system-link-group">
+                <a title="My Channel"
+                   href=""
+                   target="_blank"
+                   id="nf-youtube-link"
+                   class="external-system-link">
+                </a>
+            </div>
             <div layout-align="space-between end" layout="column">
                 <div layout="row" layout-align="space-between center" id="current-user-container">
                     <span id="anonymous-user-alert" class="hidden fa fa-warning"></span>
