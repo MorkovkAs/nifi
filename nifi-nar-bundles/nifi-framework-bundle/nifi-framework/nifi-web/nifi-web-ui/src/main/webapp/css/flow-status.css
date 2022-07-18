@@ -19,7 +19,7 @@
 
 #flow-status {
     height: 33px;
-    background-color: #E3E8EB; /*tint base-color 60%*/
+    background-color: #efefef; /*tint base-color 60%*/
     border-bottom: 1px solid #aabbc3;
     box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
     z-index: 3;
@@ -96,7 +96,7 @@
 }
 
 #bulletin-button {
-    background-color: #728E9B; /*base-color*/
+    background-color: #a1a1a1; /*base-color*/
     cursor: default;
 }
 
