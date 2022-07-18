@@ -362,6 +362,9 @@
                         // set the document title and the about title
                         document.title = aboutDetails.title;
                         $('#nf-youtube-link').attr("href", aboutDetails.youTubeChannelUrl);
+                        $('#nf-rabbit-link').attr("href", aboutDetails.rabbitUrl);
+                        $('#nf-kibana-link').attr("href", aboutDetails.kibanaUrl);
+                        $('#nf-grafana-link').attr("href", aboutDetails.grafanaUrl);
                         $('#nf-version').text(aboutDetails.version);
                         var showVersionDetail = false;
                         if (aboutDetails.buildTag && aboutDetails.buildTag !== 'HEAD') {

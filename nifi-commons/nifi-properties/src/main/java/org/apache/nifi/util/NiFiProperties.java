@@ -54,6 +54,9 @@ public class NiFiProperties extends ApplicationProperties {
 
     // custom user properties
     public static final String YOUTUBE_URL = "nifi.custom.url.youtube.channel";
+    public static final String RABBIT_URL = "nifi.custom.url.rabbit";
+    public static final String KIBANA_URL = "nifi.custom.url.kibana";
+    public static final String GRAFANA_URL = "nifi.custom.url.grafana";
 
     // core properties
     public static final String PROPERTIES_FILE_PATH = "nifi.properties.file.path";

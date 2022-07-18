@@ -16,7 +16,7 @@
 --%>
 <%@ page contentType="text/html" pageEncoding="UTF-8" session="false" %>
 <md-toolbar id="header" layout-align="space-between center" layout="row" class="md-small md-accent md-hue-1">
-    <img id="nifi-logo" src="images/nifi_youtube_logo_v2.png">
+    <img id="nifi-logo" src="images/nifi-logo.svg">
     <div flex layout="row" layout-align="space-between center">
         <div id="component-container">
             <button title="{{appCtrl.serviceProvider.headerCtrl.toolboxCtrl.config.type.processor}}"
@@ -78,10 +78,28 @@
         </div>
         <div layout="row" layout-align="space-between center">
             <div class="external-system-link-group">
-                <a title="My Channel"
+                <a title="YouTube Channel"
                    href=""
                    target="_blank"
                    id="nf-youtube-link"
+                   class="external-system-link">
+                </a>
+                <a title="RabbitMQ"
+                   href=""
+                   target="_blank"
+                   id="nf-rabbit-link"
+                   class="external-system-link">
+                </a>
+                <a title="Kibana for Gateway Asur2"
+                   href=""
+                   target="_blank"
+                   id="nf-kibana-link"
+                   class="external-system-link">
+                </a>
+                <a title="Grafana"
+                   href=""
+                   target="_blank"
+                   id="nf-grafana-link"
                    class="external-system-link">
                 </a>
             </div>

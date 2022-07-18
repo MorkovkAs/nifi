@@ -35,7 +35,12 @@ public class AboutDTO {
 
     private String uri;
     private String contentViewerUrl;
+
     private String youTubeChannelUrl;
+    private String kibanaUrl;
+    private String grafanaUrl;
+    private String rabbitUrl;
+
     private Date timezone;
 
     private String buildTag;
@@ -117,6 +122,51 @@ public class AboutDTO {
 
     public void setYouTubeChannelUrl(String youTubeChannelUrl) {
         this.youTubeChannelUrl = youTubeChannelUrl;
+    }
+
+    /**
+     * @return the URL for Kibana
+     */
+    @ApiModelProperty(
+            value = "The URL for Kibana"
+    )
+
+    public String getKibanaUrl() {
+        return kibanaUrl;
+    }
+
+    public void setKibanaUrl(String kibanaUrl) {
+        this.kibanaUrl = kibanaUrl;
+    }
+
+    /**
+     * @return the URL for Grafana
+     */
+    @ApiModelProperty(
+            value = "The URL for Grafana"
+    )
+
+    public String getGrafanaUrl() {
+        return grafanaUrl;
+    }
+
+    public void setGrafanaUrl(String grafanaUrl) {
+        this.grafanaUrl = grafanaUrl;
+    }
+
+    /**
+     * @return the URL for RabbitMQ
+     */
+    @ApiModelProperty(
+            value = "The URL for RabbitMQ"
+    )
+
+    public String getRabbitUrl() {
+        return rabbitUrl;
+    }
+
+    public void setRabbitUrl(String rabbitUrl) {
+        this.rabbitUrl = rabbitUrl;
     }
 
     /**
