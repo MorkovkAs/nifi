@@ -170,7 +170,6 @@ import static org.apache.nifi.web.api.entity.ScheduleComponentsEntity.STATE_ENAB
 )
 public class FlowResource extends ApplicationResource {
 
-    private static final String NIFI_REGISTRY_TYPE = "org.apache.nifi.registry.flow.NifiRegistryFlowRegistryClient";
     private static final String RECURSIVE = "false";
 
     private NiFiServiceFacade serviceFacade;
@@ -187,7 +186,6 @@ public class FlowResource extends ApplicationResource {
     private ProcessGroupResource processGroupResource;
     private ControllerServiceResource controllerServiceResource;
     private ReportingTaskResource reportingTaskResource;
-    private ParameterProviderResource parameterProviderResource;
 
     public FlowResource() {
         super();
@@ -576,54 +574,6 @@ public class FlowResource extends ApplicationResource {
         return generateOkResponse(entity).build();
     }
 
-
-    // ---------------
-    // parameter-providers
-    // ---------------
-
-    /**
-     * Retrieves all the of parameter providers in this NiFi.
-     *
-     * @return A parameterProvidersEntity.
-     */
-    @GET
-    @Consumes(MediaType.WILDCARD)
-    @Produces(MediaType.APPLICATION_JSON)
-    @Path("parameter-providers")
-    @ApiOperation(
-            value = "Gets all parameter providers",
-            response = ParameterProvidersEntity.class,
-            authorizations = {
-                    @Authorization(value = "Read - /flow")
-            }
-    )
-    @ApiResponses(
-            value = {
-                    @ApiResponse(code = 400, message = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
-                    @ApiResponse(code = 401, message = "Client could not be authenticated."),
-                    @ApiResponse(code = 403, message = "Client is not authorized to make this request."),
-                    @ApiResponse(code = 409, message = "The request was valid but NiFi was not in the appropriate state to process it. Retrying the same request later may be successful.")
-            }
-    )
-    public Response getParameterProviders() {
-
-        authorizeFlow();
-
-        if (isReplicateRequest()) {
-            return replicate(HttpMethod.GET);
-        }
-
-        // get all the parameter providers
-        final Set<ParameterProviderEntity> parameterProviders = serviceFacade.getParameterProviders();
-        parameterProviderResource.populateRemainingParameterProviderEntitiesContent(parameterProviders);
-
-        // create the response entity
-        final ParameterProvidersEntity entity = new ParameterProvidersEntity();
-        entity.setParameterProviders(parameterProviders);
-
-        // generate the response
-        return generateOkResponse(entity).build();
-    }
 
     // ---------------
     // reporting-tasks
@@ -1365,7 +1315,7 @@ public class FlowResource extends ApplicationResource {
     /**
      * Retrieves the types of reporting tasks that this NiFi supports.
      *
-     * @return A ReportingTaskTypesEntity.
+     * @return A controllerServicesTypesEntity.
      * @throws InterruptedException if interrupted
      */
     @GET
@@ -1447,63 +1397,6 @@ public class FlowResource extends ApplicationResource {
         // create response entity
         final RuntimeManifestEntity entity = new RuntimeManifestEntity();
         entity.setRuntimeManifest(serviceFacade.getRuntimeManifest());
-
-        // generate the response
-        return generateOkResponse(entity).build();
-    }
-
-    /**
-     * Retrieves the types of parameter providers that this NiFi supports.
-     *
-     * @return A ParameterProviderTypesEntity.
-     * @throws InterruptedException if interrupted
-     */
-    @GET
-    @Consumes(MediaType.WILDCARD)
-    @Produces(MediaType.APPLICATION_JSON)
-    @Path("parameter-provider-types")
-    @ApiOperation(
-            value = "Retrieves the types of parameter providers that this NiFi supports",
-            notes = NON_GUARANTEED_ENDPOINT,
-            response = ParameterProviderTypesEntity.class,
-            authorizations = {
-                    @Authorization(value = "Read - /flow")
-            }
-    )
-    @ApiResponses(
-            value = {
-                    @ApiResponse(code = 400, message = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
-                    @ApiResponse(code = 401, message = "Client could not be authenticated."),
-                    @ApiResponse(code = 403, message = "Client is not authorized to make this request."),
-                    @ApiResponse(code = 409, message = "The request was valid but NiFi was not in the appropriate state to process it. Retrying the same request later may be successful.")
-            }
-    )
-    public Response getParameterProviderTypes(
-            @ApiParam(
-                    value = "If specified, will only return types that are a member of this bundle group.",
-                    required = false
-            )
-            @QueryParam("bundleGroupFilter") String bundleGroupFilter,
-            @ApiParam(
-                    value = "If specified, will only return types that are a member of this bundle artifact.",
-                    required = false
-            )
-            @QueryParam("bundleArtifactFilter") String bundleArtifactFilter,
-            @ApiParam(
-                    value = "If specified, will only return types whose fully qualified classname matches.",
-                    required = false
-            )
-            @QueryParam("type") String typeFilter) throws InterruptedException {
-
-        authorizeFlow();
-
-        if (isReplicateRequest()) {
-            return replicate(HttpMethod.GET);
-        }
-
-        // create response entity
-        final ParameterProviderTypesEntity entity = new ParameterProviderTypesEntity();
-        entity.setParameterProviderTypes(serviceFacade.getParameterProviderTypes(bundleGroupFilter, bundleArtifactFilter, typeFilter));
 
         // generate the response
         return generateOkResponse(entity).build();
@@ -1617,7 +1510,7 @@ public class FlowResource extends ApplicationResource {
     @Consumes(MediaType.WILDCARD)
     @Produces(MediaType.APPLICATION_JSON)
     @Path("registries")
-    @ApiOperation(value = "Gets the listing of available flow registry clients", response = FlowRegistryClientsEntity.class, authorizations = {
+    @ApiOperation(value = "Gets the listing of available registries", response = RegistryClientsEntity.class, authorizations = {
             @Authorization(value = "Read - /flow")
     })
     @ApiResponses(value = {
@@ -1627,49 +1520,22 @@ public class FlowResource extends ApplicationResource {
             @ApiResponse(code = 404, message = "The specified resource could not be found."),
             @ApiResponse(code = 409, message = "The request was valid but NiFi was not in the appropriate state to process it. Retrying the same request later may be successful.")
     })
-    public Response getRegistryClients() {
+    public Response getRegistries() {
         authorizeFlow();
 
-        final Set<FlowRegistryClientEntity> registryClients = serviceFacade.getRegistryClientsForUser();
-        final FlowRegistryClientsEntity registryClientEntities = new FlowRegistryClientsEntity();
-        registryClientEntities.setRegistries(registryClients);
+        final Set<RegistryEntity> registries = serviceFacade.getRegistriesForUser(NiFiUserUtils.getNiFiUser());
 
-        return generateOkResponse(populateRemainingRegistryClientEntityContent(registryClientEntities)).build();
+        final RegistriesEntity registryEntities = new RegistriesEntity();
+        registryEntities.setRegistries(registries);
+
+        return generateOkResponse(registryEntities).build();
     }
-
-    /**
-     * Populate the uri's for the specified flow registry client and also extend the result to make it backward compatible.
-     *
-     * @param flowRegistryClientEntity flow registry client
-     * @return the updated entity
-     */
-    private FlowRegistryClientEntity populateRemainingRegistryClientEntityContent(final FlowRegistryClientEntity flowRegistryClientEntity) {
-        flowRegistryClientEntity.setUri(generateResourceUri("controller", "registry-clients", flowRegistryClientEntity.getId()));
-
-        if (flowRegistryClientEntity.getComponent().getType().equals(NIFI_REGISTRY_TYPE)) {
-            flowRegistryClientEntity.getComponent().setUri(flowRegistryClientEntity.getComponent().getProperties().get("url"));
-        }
-
-        return flowRegistryClientEntity;
-    }
-
-    /**
-     * Populate the uri's for all contained flow registry clients and also extend the result to make it backward compatible.
-     */
-    private FlowRegistryClientsEntity populateRemainingRegistryClientEntityContent(final FlowRegistryClientsEntity flowRegistryClientsEntity) {
-        for (final FlowRegistryClientEntity entity : flowRegistryClientsEntity.getRegistries()) {
-            populateRemainingRegistryClientEntityContent(entity);
-        }
-
-        return flowRegistryClientsEntity;
-    }
-
 
     @GET
     @Consumes(MediaType.WILDCARD)
     @Produces(MediaType.APPLICATION_JSON)
     @Path("registries/{id}/buckets")
-    @ApiOperation(value = "Gets the buckets from the specified registry for the current user", response = FlowRegistryBucketsEntity.class, authorizations = {
+    @ApiOperation(value = "Gets the buckets from the specified registry for the current user", response = BucketsEntity.class, authorizations = {
             @Authorization(value = "Read - /flow")
     })
     @ApiResponses(value = {
@@ -1688,23 +1554,23 @@ public class FlowResource extends ApplicationResource {
 
         authorizeFlow();
 
-        final Set<FlowRegistryBucketEntity> buckets = serviceFacade.getBucketsForUser(id);
-        final SortedSet<FlowRegistryBucketEntity> sortedBuckets = sortBuckets(buckets);
+        final Set<BucketEntity> buckets = serviceFacade.getBucketsForUser(id, NiFiUserUtils.getNiFiUser());
+        final SortedSet<BucketEntity> sortedBuckets = sortBuckets(buckets);
 
-        final FlowRegistryBucketsEntity flowRegistryBucketsEntity = new FlowRegistryBucketsEntity();
-        flowRegistryBucketsEntity.setBuckets(sortedBuckets);
+        final BucketsEntity bucketsEntity = new BucketsEntity();
+        bucketsEntity.setBuckets(sortedBuckets);
 
-        return generateOkResponse(flowRegistryBucketsEntity).build();
+        return generateOkResponse(bucketsEntity).build();
     }
 
-    private SortedSet<FlowRegistryBucketEntity> sortBuckets(final Set<FlowRegistryBucketEntity> buckets) {
-        final SortedSet<FlowRegistryBucketEntity> sortedBuckets = new TreeSet<>((entity1, entity2) -> Collator.getInstance().compare(getBucketName(entity1), getBucketName(entity2)));
+    private SortedSet<BucketEntity> sortBuckets(final Set<BucketEntity> buckets) {
+        final SortedSet<BucketEntity> sortedBuckets = new TreeSet<>((entity1, entity2) -> Collator.getInstance().compare(getBucketName(entity1), getBucketName(entity2)));
 
         sortedBuckets.addAll(buckets);
         return sortedBuckets;
     }
 
-    private String getBucketName(final FlowRegistryBucketEntity entity) {
+    private String getBucketName(final BucketEntity entity) {
         return entity.getBucket() == null ? null : entity.getBucket().getName();
     }
 
@@ -1724,7 +1590,7 @@ public class FlowResource extends ApplicationResource {
     })
     public Response getFlows(
             @ApiParam(
-                value = "The registry client id.",
+                value = "The registry id.",
                 required = true
             )
             @PathParam("registry-id") String registryId,
@@ -1736,8 +1602,8 @@ public class FlowResource extends ApplicationResource {
 
         authorizeFlow();
 
-        final Set<VersionedFlowEntity> registeredFlows = serviceFacade.getFlowsForUser(registryId, bucketId);
-        final SortedSet<VersionedFlowEntity> sortedFlows = sortFlows(registeredFlows);
+        final Set<VersionedFlowEntity> versionedFlows = serviceFacade.getFlowsForUser(registryId, bucketId, NiFiUserUtils.getNiFiUser());
+        final SortedSet<VersionedFlowEntity> sortedFlows = sortFlows(versionedFlows);
 
         final VersionedFlowsEntity versionedFlowsEntity = new VersionedFlowsEntity();
         versionedFlowsEntity.setVersionedFlows(sortedFlows);
@@ -1759,45 +1625,6 @@ public class FlowResource extends ApplicationResource {
     @GET
     @Consumes(MediaType.WILDCARD)
     @Produces(MediaType.APPLICATION_JSON)
-    @Path("registries/{registry-id}/buckets/{bucket-id}/flows/{flow-id}/details")
-    @ApiOperation(value = "Gets the details of a flow from the specified registry and bucket for the specified flow for the current user",
-            response = VersionedFlowEntity.class,
-            authorizations = {
-                    @Authorization(value = "Read - /flow")
-            })
-    @ApiResponses(value = {
-            @ApiResponse(code = 400, message = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
-            @ApiResponse(code = 401, message = "Client could not be authenticated."),
-            @ApiResponse(code = 403, message = "Client is not authorized to make this request."),
-            @ApiResponse(code = 404, message = "The specified resource could not be found."),
-            @ApiResponse(code = 409, message = "The request was valid but NiFi was not in the appropriate state to process it. Retrying the same request later may be successful.")
-    })
-    public Response getDetails(
-            @ApiParam(
-                    value = "The registry client id.",
-                    required = true
-            )
-            @PathParam("registry-id") String registryId,
-            @ApiParam(
-                    value = "The bucket id.",
-                    required = true
-            )
-            @PathParam("bucket-id") String bucketId,
-            @ApiParam(
-                    value = "The flow id.",
-                    required = true
-            )
-            @PathParam("flow-id") String flowId) {
-
-        authorizeFlow();
-
-        final VersionedFlowEntity flowDetails = serviceFacade.getFlowForUser(registryId, bucketId, flowId);
-        return generateOkResponse(flowDetails).build();
-    }
-
-    @GET
-    @Consumes(MediaType.WILDCARD)
-    @Produces(MediaType.APPLICATION_JSON)
     @Path("registries/{registry-id}/buckets/{bucket-id}/flows/{flow-id}/versions")
     @ApiOperation(value = "Gets the flow versions from the specified registry and bucket for the specified flow for the current user",
                   response = VersionedFlowSnapshotMetadataSetEntity.class,
@@ -1813,7 +1640,7 @@ public class FlowResource extends ApplicationResource {
     })
     public Response getVersions(
             @ApiParam(
-                    value = "The registry client id.",
+                    value = "The registry id.",
                     required = true
             )
             @PathParam("registry-id") String registryId,
@@ -1830,10 +1657,10 @@ public class FlowResource extends ApplicationResource {
 
         authorizeFlow();
 
-        final Set<VersionedFlowSnapshotMetadataEntity> registeredFlowSnapshotMetadataSet = serviceFacade.getFlowVersionsForUser(registryId, bucketId, flowId);
+        final Set<VersionedFlowSnapshotMetadataEntity> versionedFlowSnapshotMetadataSet = serviceFacade.getFlowVersionsForUser(registryId, bucketId, flowId, NiFiUserUtils.getNiFiUser());
 
         final VersionedFlowSnapshotMetadataSetEntity versionedFlowSnapshotMetadataSetEntity = new VersionedFlowSnapshotMetadataSetEntity();
-        versionedFlowSnapshotMetadataSetEntity.setVersionedFlowSnapshotMetadataSet(registeredFlowSnapshotMetadataSet);
+        versionedFlowSnapshotMetadataSetEntity.setVersionedFlowSnapshotMetadataSet(versionedFlowSnapshotMetadataSet);
 
         return generateOkResponse(versionedFlowSnapshotMetadataSetEntity).build();
     }
@@ -2944,14 +2771,6 @@ public class FlowResource extends ApplicationResource {
                 // ignore as the component may not be a reporting task
             }
 
-            try {
-                final Authorizable authorizable = lookup.getParameterProvider(componentId).getAuthorizable();
-                authorizable.authorize(authorizer, RequestAction.READ, user);
-                return;
-            } catch (final ResourceNotFoundException e) {
-                // ignore as the component may not be a parameter provider
-            }
-
             // a component for the specified id could not be found, attempt to authorize based on read to the controller
             final Authorizable controller = lookup.getController();
             controller.authorize(authorizer, RequestAction.READ, user);
@@ -3142,10 +2961,6 @@ public class FlowResource extends ApplicationResource {
 
     public void setReportingTaskResource(ReportingTaskResource reportingTaskResource) {
         this.reportingTaskResource = reportingTaskResource;
-    }
-
-    public void setParameterProviderResource(final ParameterProviderResource parameterProviderResource) {
-        this.parameterProviderResource = parameterProviderResource;
     }
 
     public void setAuthorizer(Authorizer authorizer) {
