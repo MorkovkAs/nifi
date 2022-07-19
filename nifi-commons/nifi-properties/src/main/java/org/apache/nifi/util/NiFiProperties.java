@@ -52,6 +52,9 @@ import java.util.stream.Stream;
 public class NiFiProperties extends ApplicationProperties {
     private static final Logger logger = LoggerFactory.getLogger(NiFiProperties.class);
 
+    // custom user properties
+    public static final String YOUTUBE_URL = "nifi.custom.url.youtube.channel";
+
     // core properties
     public static final String PROPERTIES_FILE_PATH = "nifi.properties.file.path";
     public static final String FLOW_CONFIGURATION_FILE = "nifi.flow.configuration.file";
