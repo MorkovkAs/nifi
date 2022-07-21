@@ -23,6 +23,8 @@
 [Apache NiFi](https://nifi.apache.org/) is an easy to use, powerful, and
 reliable system to process and distribute data.
 
+![](screenshot.png?raw=true)
+
 ## Table of Contents
 
 - [Features](#features)
@@ -160,7 +162,7 @@ Accessing NiFi after accepting the self-signed certificate will display the logi
 
 Using the generated credentials, enter the generated username in the `User` field
 and the generated password in the `Password` field, then select `LOG IN` to access the system.
-![NiFi Flow Authenticated Screen](nifi-docs/src/main/asciidoc/images/nifi-flow-authenticated.png?raw=true)
+![NiFi Flow Authenticated Screen](screenshot.png?raw=true)
 
 ### Configuring
 
