@@ -33,7 +33,7 @@ import org.apache.nifi.serialization.record.RecordFieldType;
 import org.apache.nifi.serialization.record.RecordSchema;
 import org.apache.nifi.util.TestRunner;
 import org.apache.nifi.util.TestRunners;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.BufferedInputStream;
 import java.io.File;
@@ -41,6 +41,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -49,10 +50,74 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class TestJoinEnrichment {
     private static final File EXAMPLES_DIR = new File("src/test/resources/TestJoinEnrichment");
 
+    @Test
+    public void testManyQueued() throws InitializationException {
+        final TestRunner runner = TestRunners.newTestRunner(new JoinEnrichment());
+
+        final ArrayListRecordWriter writer = setupCsvServices(runner);
+        runner.setProperty(JoinEnrichment.JOIN_STRATEGY, JoinEnrichment.JOIN_SQL);
+        runner.setProperty(JoinEnrichment.SQL, "SELECT original.i, original.lower_letter, enrichment.upper_letter FROM original JOIN enrichment ON original.i = enrichment.i");
+
+        // Enqueue a flowfile where i=0, lower_letter=a; another with i=1, lower_letter=b; etc. up to i=25, lower_letter=z
+        for (int i=0; i < 26; i++) {
+            final Map<String, String> originalAttributes = new HashMap<>();
+            originalAttributes.put("enrichment.group.id", String.valueOf(i));
+            originalAttributes.put("enrichment.role", "ORIGINAL");
+
+            final char letter = (char) ('a' + i);
+
+            runner.enqueue("i,lower_letter\n" + i + "," + letter, originalAttributes);
+        }
+
+        // Enqueue a flowfile where i=0, upper_letter=A; another with i=1, upper_letter=B; etc. up to i=25, upper_letter=Z
+        for (int i=0; i < 26; i++) {
+            final Map<String, String> enrichmentAttributes = new HashMap<>();
+            enrichmentAttributes.put("enrichment.group.id", String.valueOf(i));
+            enrichmentAttributes.put("enrichment.role", "ENRICHMENT");
+
+            final char letter = (char) ('A' + i);
+            runner.enqueue("i,upper_letter\n" + i + "," + letter, enrichmentAttributes);
+        }
+
+        runner.run();
+
+        // Ensure that the result is i=0,lower_letter=a,upper_letter=A ... i=25,lower_letter=z,upper_letter=Z
+        runner.assertTransferCount(JoinEnrichment.REL_JOINED, 26);
+        runner.assertTransferCount(JoinEnrichment.REL_ORIGINAL, 52);
+
+        final List<Record> written = writer.getRecordsWritten();
+        assertEquals(26, written.size());
+
+        final BitSet found = new BitSet();
+        for (final Record outRecord : written) {
+            final RecordSchema schema = outRecord.getSchema();
+            assertEquals(RecordFieldType.STRING, schema.getField("i").get().getDataType().getFieldType());
+            assertEquals(RecordFieldType.STRING, schema.getField("lower_letter").get().getDataType().getFieldType());
+            assertEquals(RecordFieldType.STRING, schema.getField("upper_letter").get().getDataType().getFieldType());
+
+            final int id = outRecord.getAsInt("i");
+
+            final String expectedLower = "" + ((char) ('a' + id));
+            assertEquals(expectedLower, outRecord.getValue("lower_letter"));
+
+            final String expectedUpper = "" + ((char) ('A' + id));
+            assertEquals(expectedUpper, outRecord.getValue("upper_letter"));
+
+            assertEquals(outRecord.getAsString("lower_letter"), outRecord.getAsString("upper_letter").toLowerCase());
+
+            found.set(id);
+        }
+
+        for (int i=0; i < 26; i++) {
+            assertTrue(found.get(i));
+        }
+    }
 
     @Test
     public void testSimpleSqlJoin() throws InitializationException {
@@ -149,7 +214,7 @@ public class TestJoinEnrichment {
 
     // Tests that the Insert Enrichment Record Fields example in the Additional Details produces expected output
     @Test
-    public void testInsertEnrichmentFields() throws InitializationException, IOException, SchemaNotFoundException, MalformedRecordException {
+    public void testInsertEnrichmentFields() throws InitializationException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(new JoinEnrichment());
 
         final ArrayListRecordWriter writer = setupJsonServices(runner);
@@ -182,6 +247,48 @@ public class TestJoinEnrichment {
         assertEquals(48202, customerDetails.getValue("id"));
         assertEquals("555-555-5555", customerDetails.getValue("phone"));
         assertEquals("john.doe@nifi.apache.org", customerDetails.getValue("email"));
+
+        final List<Object> secondCustomerDetailsList = recordPath.evaluate(written.get(1)).getSelectedFields().map(FieldValue::getValue).collect(Collectors.toList());
+        assertEquals(1, secondCustomerDetailsList.size());
+        final Record secondCustomerDetails = (Record) secondCustomerDetailsList.get(0);
+        assertEquals(5512, secondCustomerDetails.getValue("id"));
+        assertEquals("555-555-5511", secondCustomerDetails.getValue("phone"));
+        assertEquals("jane.doe@nifi.apache.org", secondCustomerDetails.getValue("email"));
+    }
+
+    // Tests that when the first enrichment record has a null value, that we still properly apply subsequent enrichments.
+    @Test
+    public void testFirstEnrichmentRecordNull() throws InitializationException, IOException {
+        final TestRunner runner = TestRunners.newTestRunner(new JoinEnrichment());
+
+        final ArrayListRecordWriter writer = setupJsonServices(runner);
+        runner.setProperty(JoinEnrichment.JOIN_STRATEGY, JoinEnrichment.JOIN_INSERT_ENRICHMENT_FIELDS);
+        runner.setProperty(JoinEnrichment.INSERTION_RECORD_PATH, "/purchase/customer");
+
+        final Map<String, String> originalAttributes = new HashMap<>();
+        originalAttributes.put("enrichment.group.id", "abc");
+        originalAttributes.put("enrichment.role", "ORIGINAL");
+        runner.enqueue(new File(EXAMPLES_DIR, "insert-original.json").toPath(), originalAttributes);
+
+        final Map<String, String> enrichmentAttributes = new HashMap<>();
+        enrichmentAttributes.put("enrichment.group.id", "abc");
+        enrichmentAttributes.put("enrichment.role", "ENRICHMENT");
+        runner.enqueue(new File(EXAMPLES_DIR, "insert-enrichment-first-value-null.json").toPath(), enrichmentAttributes);
+
+        runner.run();
+
+        runner.assertTransferCount(JoinEnrichment.REL_JOINED, 1);
+        runner.assertTransferCount(JoinEnrichment.REL_ORIGINAL, 2);
+
+        final List<Record> written = writer.getRecordsWritten();
+        assertEquals(2, written.size());
+
+        final RecordPath recordPath = RecordPath.compile("/purchase/customer/customerDetails");
+
+        final List<Object> firstCustomerDetailsList = recordPath.evaluate(written.get(0)).getSelectedFields().map(FieldValue::getValue).collect(Collectors.toList());
+        assertEquals(1, firstCustomerDetailsList.size());
+        final Record customerDetails = (Record) firstCustomerDetailsList.get(0);
+        assertNull(customerDetails);
 
         final List<Object> secondCustomerDetailsList = recordPath.evaluate(written.get(1)).getSelectedFields().map(FieldValue::getValue).collect(Collectors.toList());
         assertEquals(1, secondCustomerDetailsList.size());

@@ -16,36 +16,41 @@
 # under the License.
 #
 
-FROM openjdk:8-jdk-slim
+FROM eclipse-temurin:11-jre
 LABEL maintainer="Apache NiFi <dev@nifi.apache.org>"
 LABEL site="https://nifi.apache.org"
 
 ARG UID=1000
 ARG GID=1000
-ARG NIFI_REGISTRY_VERSION=1.16.0
+ARG NIFI_REGISTRY_VERSION=1.19.0
 ARG MIRROR=https://archive.apache.org/dist
 
 ENV NIFI_REGISTRY_BASE_DIR /opt/nifi-registry
 ENV NIFI_REGISTRY_HOME ${NIFI_REGISTRY_BASE_DIR}/nifi-registry-current
-ENV NIFI_REGISTRY_BINARY_PATH nifi/${NIFI_REGISTRY_VERSION}/nifi-registry-${NIFI_REGISTRY_VERSION}-bin.tar.gz
+ENV NIFI_REGISTRY_BINARY nifi-registry-${NIFI_REGISTRY_VERSION}-bin.zip
+ENV NIFI_REGISTRY_BINARY_PATH nifi/${NIFI_REGISTRY_VERSION}/${NIFI_REGISTRY_BINARY}
 ENV NIFI_REGISTRY_BINARY_URL ${MIRROR}/${NIFI_REGISTRY_BINARY_PATH}
 
 ADD sh/ ${NIFI_REGISTRY_BASE_DIR}/scripts/
+RUN chmod -R +x ${NIFI_REGISTRY_BASE_DIR}/scripts/*.sh
 
 # Setup NiFi-Registry user
 RUN groupadd -g ${GID} nifi || groupmod -n nifi `getent group ${GID} | cut -d: -f1` \
     && useradd --shell /bin/bash -u ${UID} -g ${GID} -m nifi \
     && chown -R nifi:nifi ${NIFI_REGISTRY_BASE_DIR} \
     && apt-get update -y \
-    && apt-get install -y curl jq xmlstarlet
+    && apt-get install -y curl jq xmlstarlet unzip \
+    && apt-get -y autoremove \
+    && apt-get clean autoclean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 USER nifi
 
 # Download, validate, and expand Apache NiFi-Registry binary.
-RUN curl -fSL ${NIFI_REGISTRY_BINARY_URL} -o ${NIFI_REGISTRY_BASE_DIR}/nifi-registry-${NIFI_REGISTRY_VERSION}-bin.tar.gz \
-    && echo "$(curl ${NIFI_REGISTRY_BINARY_URL}.sha256) *${NIFI_REGISTRY_BASE_DIR}/nifi-registry-${NIFI_REGISTRY_VERSION}-bin.tar.gz" | sha256sum -c - \
-    && tar -xvzf ${NIFI_REGISTRY_BASE_DIR}/nifi-registry-${NIFI_REGISTRY_VERSION}-bin.tar.gz -C ${NIFI_REGISTRY_BASE_DIR} \
-    && rm ${NIFI_REGISTRY_BASE_DIR}/nifi-registry-${NIFI_REGISTRY_VERSION}-bin.tar.gz \
+RUN curl -fSL ${NIFI_REGISTRY_BINARY_URL} -o ${NIFI_REGISTRY_BASE_DIR}/${NIFI_REGISTRY_BINARY} \
+    && echo "$(curl ${NIFI_REGISTRY_BINARY_URL}.sha256) *${NIFI_REGISTRY_BASE_DIR}/${NIFI_REGISTRY_BINARY}" | sha256sum -c - \
+    && unzip ${NIFI_REGISTRY_BASE_DIR}/${NIFI_REGISTRY_BINARY} -d ${NIFI_REGISTRY_BASE_DIR} \
+    && rm ${NIFI_REGISTRY_BASE_DIR}/${NIFI_REGISTRY_BINARY} \
     && mv ${NIFI_REGISTRY_BASE_DIR}/nifi-registry-${NIFI_REGISTRY_VERSION} ${NIFI_REGISTRY_HOME} \
     && ln -s ${NIFI_REGISTRY_HOME} ${NIFI_REGISTRY_BASE_DIR}/nifi-registry-${NIFI_REGISTRY_VERSION} \
     && chown -R nifi:nifi ${NIFI_REGISTRY_HOME}
@@ -56,4 +61,4 @@ EXPOSE 18080 18443
 WORKDIR ${NIFI_REGISTRY_HOME}
 
 # Apply configuration and start NiFi Registry
-CMD ${NIFI_REGISTRY_BASE_DIR}/scripts/start.sh
+ENTRYPOINT ["../scripts/start.sh"]

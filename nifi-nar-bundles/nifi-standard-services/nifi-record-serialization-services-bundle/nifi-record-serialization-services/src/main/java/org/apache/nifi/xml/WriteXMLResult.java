@@ -18,7 +18,7 @@
 package org.apache.nifi.xml;
 
 import javanet.staxutils.IndentingXMLStreamWriter;
-import org.apache.nifi.record.NullSuppression;
+import org.apache.nifi.NullSuppression;
 import org.apache.nifi.schema.access.SchemaAccessWriter;
 import org.apache.nifi.serialization.AbstractRecordSetWriter;
 import org.apache.nifi.serialization.RecordSetWriter;
@@ -263,6 +263,7 @@ public class WriteXMLResult extends AbstractRecordSetWriter implements RecordSet
             case INT:
             case LONG:
             case SHORT:
+            case UUID:
             case STRING: {
                 writeAllTags(tagsToOpen, fieldName);
                 writer.writeCharacters(coercedValue.toString());

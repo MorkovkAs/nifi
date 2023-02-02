@@ -134,6 +134,7 @@ public class TestWriteCSVResult {
             valueMap.put("choice", 48L);
             valueMap.put("array", null);
             valueMap.put("enum", null);
+            valueMap.put("uuid", "8bb20bf2-ec41-4b94-80a4-922f4dba009c");
 
             final Record record = new MapRecord(schema, valueMap);
             final RecordSet rs = RecordSet.of(schema, record);
@@ -156,7 +157,8 @@ public class TestWriteCSVResult {
 
         final String values = splits[1];
         final StringBuilder expectedBuilder = new StringBuilder();
-        expectedBuilder.append("\"true\",\"1\",\"8\",\"9\",\"8\",\"8\",\"8.0\",\"8.0\",\"8.1\",\"" + timestampValue + "\",\"" + dateValue + "\",\"" + timeValue + "\",\"c\",,\"a孟bc李12儒3\",,\"48\",,");
+        expectedBuilder.append("\"true\",\"1\",\"8\",\"9\",\"8\",\"8\",\"8.0\",\"8.0\",\"8.1\",\"" + timestampValue +
+                "\",\"" + dateValue + "\",\"" + timeValue + "\",\"8bb20bf2-ec41-4b94-80a4-922f4dba009c\",\"c\",,\"a孟bc李12儒3\",,\"48\",,");
 
         final String expectedValues = expectedBuilder.toString();
 
@@ -383,6 +385,28 @@ public class TestWriteCSVResult {
         }
 
         assertEquals("id,name\n1\\,John Doe\n", output);
+    }
+
+    @Test
+    public void testWriteHeaderWithNoRecords() throws IOException {
+        final CSVFormat csvFormat = CSVFormat.DEFAULT.builder().setEscape('\\').setQuoteMode(QuoteMode.NONE).setRecordSeparator(",").build();
+        final List<RecordField> fields = new ArrayList<>();
+        fields.add(new RecordField("id", RecordFieldType.STRING.getDataType()));
+        fields.add(new RecordField("name", RecordFieldType.STRING.getDataType()));
+        final RecordSchema schema = new SimpleRecordSchema(fields);
+
+        final ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        final String output;
+        try (final WriteCSVResult writer = new WriteCSVResult(csvFormat, schema, new SchemaNameAsAttribute(), baos,
+                RecordFieldType.DATE.getDefaultFormat(), RecordFieldType.TIME.getDefaultFormat(), RecordFieldType.TIMESTAMP.getDefaultFormat(), true, "ASCII")) {
+
+            writer.beginRecordSet();
+            writer.finishRecordSet();
+            writer.flush();
+            output = baos.toString();
+        }
+
+        assertEquals("id,name,", output);
     }
 
 

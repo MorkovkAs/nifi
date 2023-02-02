@@ -23,6 +23,7 @@ import org.apache.nifi.connectable.Connection;
 import org.apache.nifi.connectable.Funnel;
 import org.apache.nifi.connectable.Port;
 import org.apache.nifi.controller.FlowController;
+import org.apache.nifi.controller.ParameterProviderNode;
 import org.apache.nifi.controller.ProcessorNode;
 import org.apache.nifi.controller.flow.FlowManager;
 import org.apache.nifi.controller.label.Label;
@@ -38,13 +39,14 @@ import org.apache.nifi.web.search.ComponentMatcher;
 import org.apache.nifi.web.search.query.SearchQuery;
 import org.apache.nifi.web.search.resultenrichment.ComponentSearchResultEnricher;
 import org.apache.nifi.web.search.resultenrichment.ComponentSearchResultEnricherFactory;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.util.Arrays;
 import java.util.Collection;
@@ -55,7 +57,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-@RunWith(MockitoJUnitRunner.class)
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 public class ControllerSearchServiceTest  {
 
     public static final String PROCESS_GROUP_SECOND_LEVEL_A = "secondLevelA";
@@ -111,6 +117,9 @@ public class ControllerSearchServiceTest  {
     private ComponentMatcher<ParameterContext> matcherForParameterContext;
 
     @Mock
+    private ComponentMatcher<ParameterProviderNode> matcherForParameterProviderNode;
+
+    @Mock
     private ComponentMatcher<Parameter> matcherForParameter;
 
     @Mock
@@ -122,7 +131,7 @@ public class ControllerSearchServiceTest  {
 
     private SearchResultsDTO results;
 
-    @Before
+    @BeforeEach
     public void setUp() {
         Mockito.when(resultEnricherFactory.getComponentResultEnricher(Mockito.any(ProcessGroup.class), Mockito.any(NiFiUser.class))).thenReturn(resultEnricher);
         Mockito.when(resultEnricherFactory.getProcessGroupResultEnricher(Mockito.any(ProcessGroup.class), Mockito.any(NiFiUser.class))).thenReturn(resultEnricher);
@@ -138,7 +147,9 @@ public class ControllerSearchServiceTest  {
         Mockito.when(matcherForParameterContext.match(Mockito.any(ParameterContext.class), Mockito.any(SearchQuery.class))).thenReturn(Optional.of(new ComponentSearchResultDTO()));
         Mockito.when(matcherForParameter.match(Mockito.any(Parameter.class), Mockito.any(SearchQuery.class))).thenReturn(Optional.of(new ComponentSearchResultDTO()));
         Mockito.when(matcherForLabel.match(Mockito.any(Label.class), Mockito.any(SearchQuery.class))).thenReturn(Optional.of(new ComponentSearchResultDTO()));
+        Mockito.lenient().when(matcherForParameterProviderNode.match(Mockito.any(ParameterProviderNode.class), Mockito.any(SearchQuery.class))).thenReturn(Optional.of(new ComponentSearchResultDTO()));
 
+        Mockito.when(flowController.getFlowManager()).thenReturn(flowManager);
         results = new SearchResultsDTO();
         testSubject = givenTestSubject();
         processGroups = new HashMap<>();
@@ -428,6 +439,7 @@ public class ControllerSearchServiceTest  {
         result.setMatcherForParameterContext(matcherForParameterContext);
         result.setMatcherForParameter(matcherForParameter);
         result.setMatcherForLabel(matcherForLabel);
+        result.setMatcherForParameterProviderNode(matcherForParameterProviderNode);
         result.setResultEnricherFactory(resultEnricherFactory);
         return result;
     }
@@ -459,6 +471,11 @@ public class ControllerSearchServiceTest  {
         final Label label = Mockito.mock(Label.class);
         Mockito.when(label.isAuthorized(authorizer, RequestAction.READ, user)).thenReturn(true);
         Mockito.when(root.getLabels()).thenReturn(new HashSet<>(Arrays.asList(label)));
+
+        final ParameterProviderNode parameterProviderNode = Mockito.mock(ParameterProviderNode.class);
+        Mockito.when(parameterProviderNode.isAuthorized(authorizer, RequestAction.READ, user)).thenReturn(true);
+        Mockito.when(flowManager.getAllParameterProviders()).thenReturn(new HashSet<>(Arrays.asList(parameterProviderNode)));
+
     }
 
     private void givenProcessGroupsAreSetUp() {
@@ -473,6 +490,7 @@ public class ControllerSearchServiceTest  {
 
         final ProcessGroup root =  givenProcessGroup(PROCESS_GROUP_ROOT, //
                 true, Collections.emptySet(), new HashSet<>(Arrays.asList(firstLevelAProcessGroup, firstLevelBProcessGroup)));
+
     }
 
     private void givenSearchQueryIsSetUp() {
@@ -542,7 +560,6 @@ public class ControllerSearchServiceTest  {
         final ParameterDescriptor descriptor = Mockito.mock(ParameterDescriptor.class);
         final Map<ParameterDescriptor, Parameter> parameters = new HashMap<>();
         parameters.put(descriptor, parameter);
-        Mockito.when(flowController.getFlowManager()).thenReturn(flowManager);
         Mockito.when(flowManager.getParameterContextManager()).thenReturn(parameterContextManager);
         Mockito.when(parameterContextManager.getParameterContexts()).thenReturn(new HashSet<>(Arrays.asList(parameterContext)));
         Mockito.when(parameterContext.getParameters()).thenReturn(parameters);
@@ -565,15 +582,16 @@ public class ControllerSearchServiceTest  {
     }
 
     private void thenAllComponentResultsAreCollected() {
-        Assert.assertEquals(1, results.getProcessorResults().size());
-        Assert.assertEquals(1, results.getConnectionResults().size());
-        Assert.assertEquals(1, results.getRemoteProcessGroupResults().size());
-        Assert.assertEquals(1, results.getInputPortResults().size());
-        Assert.assertEquals(1, results.getOutputPortResults().size());
-        Assert.assertEquals(1, results.getFunnelResults().size());
-        Assert.assertEquals(1, results.getLabelResults().size());
-        Assert.assertTrue(results.getParameterContextResults().isEmpty());
-        Assert.assertTrue(results.getParameterResults().isEmpty());
+        assertEquals(1, results.getProcessorResults().size());
+        assertEquals(1, results.getConnectionResults().size());
+        assertEquals(1, results.getRemoteProcessGroupResults().size());
+        assertEquals(1, results.getInputPortResults().size());
+        assertEquals(1, results.getOutputPortResults().size());
+        assertEquals(1, results.getFunnelResults().size());
+        assertEquals(1, results.getLabelResults().size());
+        assertEquals(1, results.getParameterProviderNodeResults().size());
+        assertTrue(results.getParameterContextResults().isEmpty());
+        assertTrue(results.getParameterResults().isEmpty());
     }
 
     private void thenParameterComponentTypesAreChecked() {
@@ -582,16 +600,16 @@ public class ControllerSearchServiceTest  {
     }
 
     private void thenAllParameterComponentResultsAreCollected() {
-        Assert.assertTrue(results.getProcessGroupResults().isEmpty());
-        Assert.assertTrue(results.getProcessorResults().isEmpty());
-        Assert.assertTrue(results.getConnectionResults().isEmpty());
-        Assert.assertTrue(results.getRemoteProcessGroupResults().isEmpty());
-        Assert.assertTrue(results.getInputPortResults().isEmpty());
-        Assert.assertTrue(results.getOutputPortResults().isEmpty());
-        Assert.assertTrue(results.getFunnelResults().isEmpty());
-        Assert.assertTrue(results.getLabelResults().isEmpty());
-        Assert.assertEquals(1, results.getParameterContextResults().size());
-        Assert.assertEquals(1, results.getParameterResults().size());
+        assertTrue(results.getProcessGroupResults().isEmpty());
+        assertTrue(results.getProcessorResults().isEmpty());
+        assertTrue(results.getConnectionResults().isEmpty());
+        assertTrue(results.getRemoteProcessGroupResults().isEmpty());
+        assertTrue(results.getInputPortResults().isEmpty());
+        assertTrue(results.getOutputPortResults().isEmpty());
+        assertTrue(results.getFunnelResults().isEmpty());
+        assertTrue(results.getLabelResults().isEmpty());
+        assertEquals(1, results.getParameterContextResults().size());
+        assertEquals(1, results.getParameterResults().size());
     }
 
     private void thenParameterSpecificComponentTypesAreNotChecked() {

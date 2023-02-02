@@ -16,14 +16,8 @@
  */
 package org.apache.nifi.integration.accesscontrol;
 
-import static org.junit.Assert.assertEquals;
-
-import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
-import javax.ws.rs.core.Response;
 import org.apache.nifi.bundle.Bundle;
-import org.apache.nifi.integration.NiFiWebApiTest;
+import org.apache.nifi.integration.NiFiWebApiFlowUtils;
 import org.apache.nifi.integration.util.NiFiTestAuthorizer;
 import org.apache.nifi.integration.util.NiFiTestServer;
 import org.apache.nifi.integration.util.NiFiTestUser;
@@ -33,8 +27,16 @@ import org.apache.nifi.nar.NarClassLoadersHolder;
 import org.apache.nifi.nar.NarUnpacker;
 import org.apache.nifi.nar.StandardExtensionDiscoveringManager;
 import org.apache.nifi.nar.SystemBundle;
+import org.apache.nifi.nar.NarUnpackMode;
 import org.apache.nifi.util.NiFiProperties;
 import org.apache.nifi.util.StringUtils;
+
+import javax.ws.rs.core.Response;
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Access control test for the dfm user.
@@ -81,7 +83,8 @@ public class AccessControlHelper {
         }
 
         final Bundle systemBundle = SystemBundle.create(props);
-        NarUnpacker.unpackNars(props, systemBundle);
+
+        NarUnpacker.unpackNars(props, systemBundle, NarUnpackMode.UNPACK_INDIVIDUAL_JARS);
         NarClassLoadersHolder.getInstance().init(props.getFrameworkWorkingDirectory(), props.getExtensionsWorkingDirectory());
 
         // load extensions
@@ -107,7 +110,7 @@ public class AccessControlHelper {
         anonymousUser = new NiFiTestUser(server.getClient(), StringUtils.EMPTY);
 
         // populate the initial data flow
-        NiFiWebApiTest.populateFlow(server.getClient(), baseUrl, readWriteUser, READ_WRITE_CLIENT_ID);
+        NiFiWebApiFlowUtils.populateFlow(server.getClient(), baseUrl, readWriteUser, READ_WRITE_CLIENT_ID);
     }
 
     public NiFiTestUser getReadUser() {

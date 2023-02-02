@@ -16,23 +16,23 @@
  */
 package org.apache.nifi.web.api;
 
-import org.apache.nifi.registry.flow.VersionedFlowSnapshot;
 import org.apache.nifi.flow.VersionedProcessGroup;
+import org.apache.nifi.registry.flow.RegisteredFlowSnapshot;
 import org.apache.nifi.web.NiFiServiceFacade;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import javax.ws.rs.core.Response;
 import java.util.UUID;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
 public class TestProcessGroupResource {
 
     @InjectMocks
@@ -44,7 +44,7 @@ public class TestProcessGroupResource {
     @Test
     public void testExportProcessGroup() {
         final String groupId = UUID.randomUUID().toString();
-        final VersionedFlowSnapshot versionedFlowSnapshot = mock(VersionedFlowSnapshot.class);
+        final RegisteredFlowSnapshot versionedFlowSnapshot = mock(RegisteredFlowSnapshot.class);
 
         when(serviceFacade.getCurrentFlowSnapshotByGroupId(groupId)).thenReturn(versionedFlowSnapshot);
 
@@ -55,7 +55,7 @@ public class TestProcessGroupResource {
 
         final Response response = processGroupResource.exportProcessGroup(groupId, false);
 
-        final VersionedFlowSnapshot resultEntity = (VersionedFlowSnapshot)response.getEntity();
+        final RegisteredFlowSnapshot resultEntity = (RegisteredFlowSnapshot)response.getEntity();
 
         assertEquals(200, response.getStatus());
         assertEquals(versionedFlowSnapshot, resultEntity);

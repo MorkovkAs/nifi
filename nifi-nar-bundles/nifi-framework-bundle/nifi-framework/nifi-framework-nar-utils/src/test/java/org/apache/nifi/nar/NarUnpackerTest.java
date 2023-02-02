@@ -17,9 +17,8 @@
 package org.apache.nifi.nar;
 
 import org.apache.nifi.util.NiFiProperties;
-import org.junit.Assert;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 import java.io.File;
 import java.io.IOException;
@@ -39,13 +38,13 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class NarUnpackerTest {
 
-    @BeforeClass
+    @BeforeAll
     public static void copyResources() throws IOException {
 
         final Path sourcePath = Paths.get("./src/test/resources");
@@ -90,7 +89,7 @@ public class NarUnpackerTest {
         assertEquals("./target/NarUnpacker/lib2/",
                 properties.getProperty("nifi.nar.library.directory.alt"));
 
-        final ExtensionMapping extensionMapping = NarUnpacker.unpackNars(properties, SystemBundle.create(properties));
+        final ExtensionMapping extensionMapping = NarUnpacker.unpackNars(properties, SystemBundle.create(properties), NarUnpackMode.UNPACK_INDIVIDUAL_JARS);
 
         assertEquals(2, extensionMapping.getAllExtensionNames().size());
 
@@ -106,7 +105,7 @@ public class NarUnpackerTest {
         assertEquals(expectedNars.size(), extensionFiles.length);
 
         for (File extensionFile : extensionFiles) {
-            Assert.assertTrue(expectedNars.contains(extensionFile.getName()));
+            assertTrue(expectedNars.contains(extensionFile.getName()));
         }
     }
 
@@ -122,7 +121,7 @@ public class NarUnpackerTest {
         others.put("nifi.nar.library.directory.alt", emptyDir.toString());
         NiFiProperties properties = loadSpecifiedProperties("/NarUnpacker/conf/nifi.properties", others);
 
-        final ExtensionMapping extensionMapping = NarUnpacker.unpackNars(properties, SystemBundle.create(properties));
+        final ExtensionMapping extensionMapping = NarUnpacker.unpackNars(properties, SystemBundle.create(properties), NarUnpackMode.UNPACK_INDIVIDUAL_JARS);
 
         assertEquals(1, extensionMapping.getAllExtensionNames().size());
         assertTrue(extensionMapping.getAllExtensionNames().keySet().contains("org.apache.nifi.processors.dummy.one"));
@@ -149,7 +148,7 @@ public class NarUnpackerTest {
         others.put("nifi.nar.library.directory.alt", nonExistantDir.toString());
         NiFiProperties properties = loadSpecifiedProperties("/NarUnpacker/conf/nifi.properties", others);
 
-        final ExtensionMapping extensionMapping = NarUnpacker.unpackNars(properties, SystemBundle.create(properties));
+        final ExtensionMapping extensionMapping = NarUnpacker.unpackNars(properties, SystemBundle.create(properties), NarUnpackMode.UNPACK_INDIVIDUAL_JARS);
 
         assertTrue(extensionMapping.getAllExtensionNames().keySet().contains("org.apache.nifi.processors.dummy.one"));
 
@@ -177,7 +176,7 @@ public class NarUnpackerTest {
         others.put("nifi.nar.library.directory.alt", nonDir.toString());
         NiFiProperties properties = loadSpecifiedProperties("/NarUnpacker/conf/nifi.properties", others);
 
-        final ExtensionMapping extensionMapping = NarUnpacker.unpackNars(properties, SystemBundle.create(properties));
+        final ExtensionMapping extensionMapping = NarUnpacker.unpackNars(properties, SystemBundle.create(properties), NarUnpackMode.UNPACK_INDIVIDUAL_JARS);
 
         assertNull(extensionMapping);
     }

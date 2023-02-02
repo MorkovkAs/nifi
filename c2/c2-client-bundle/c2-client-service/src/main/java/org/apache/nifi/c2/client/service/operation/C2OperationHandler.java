@@ -16,6 +16,7 @@
  */
 package org.apache.nifi.c2.client.service.operation;
 
+import java.util.Map;
 import org.apache.nifi.c2.protocol.api.C2Operation;
 import org.apache.nifi.c2.protocol.api.C2OperationAck;
 import org.apache.nifi.c2.protocol.api.OperandType;
@@ -39,6 +40,21 @@ public interface C2OperationHandler {
      * @return the type of the operand
      */
     OperandType getOperandType();
+
+    /**
+     * Returns the properties context for the given operand
+     *
+     * @return the property map
+     */
+    Map<String, Object> getProperties();
+
+    /**
+     * Determines if the given operation requires to restart the MiNiFi process
+     * @return true if it requires restart, false otherwise
+     */
+    default boolean requiresRestart() {
+        return false;
+    }
 
     /**
      * Handler logic for the specific C2Operation

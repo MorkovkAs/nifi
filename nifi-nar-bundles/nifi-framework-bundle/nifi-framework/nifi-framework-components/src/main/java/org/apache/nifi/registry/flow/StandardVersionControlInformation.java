@@ -31,6 +31,7 @@ public class StandardVersionControlInformation implements VersionControlInformat
     private final String flowIdentifier;
     private volatile String flowName;
     private volatile String flowDescription;
+    private volatile String storageLocation;
     private final int version;
     private volatile VersionedProcessGroup flowSnapshot;
     private final VersionedFlowStatus status;
@@ -43,6 +44,7 @@ public class StandardVersionControlInformation implements VersionControlInformat
         private String flowIdentifier;
         private String flowName;
         private String flowDescription;
+        private String storageLocation;
         private int version;
         private VersionedProcessGroup flowSnapshot;
         private VersionedFlowStatus status;
@@ -82,6 +84,11 @@ public class StandardVersionControlInformation implements VersionControlInformat
             return this;
         }
 
+        public Builder storageLocation(String storageLocation) {
+            this.storageLocation = storageLocation;
+            return this;
+        }
+
         public Builder version(int version) {
             this.version = version;
             return this;
@@ -117,6 +124,7 @@ public class StandardVersionControlInformation implements VersionControlInformat
                         return dto.getStateExplanation();
                     }
                 })
+                .storageLocation(dto.getStorageLocation())
                 .version(dto.getVersion());
 
             return builder;
@@ -129,11 +137,12 @@ public class StandardVersionControlInformation implements VersionControlInformat
             Objects.requireNonNull(version, "Version must be specified");
 
             final StandardVersionControlInformation svci = new StandardVersionControlInformation(registryIdentifier, registryName,
-                bucketIdentifier, flowIdentifier, version, flowSnapshot, status);
+                bucketIdentifier, flowIdentifier, version, storageLocation, flowSnapshot, status);
 
             svci.setBucketName(bucketName);
             svci.setFlowName(flowName);
             svci.setFlowDescription(flowDescription);
+            svci.setStorageLocation(storageLocation);
 
             return svci;
         }
@@ -141,12 +150,13 @@ public class StandardVersionControlInformation implements VersionControlInformat
 
 
     public StandardVersionControlInformation(final String registryId, final String registryName, final String bucketId, final String flowId, final int version,
-        final VersionedProcessGroup snapshot, final VersionedFlowStatus status) {
+        final String storageLocation, final VersionedProcessGroup snapshot, final VersionedFlowStatus status) {
         this.registryIdentifier = registryId;
         this.registryName = registryName;
         this.bucketIdentifier = bucketId;
         this.flowIdentifier = flowId;
         this.version = version;
+        this.storageLocation = storageLocation;
         this.flowSnapshot = snapshot;
         this.status = status;
     }
@@ -201,6 +211,15 @@ public class StandardVersionControlInformation implements VersionControlInformat
     @Override
     public String getFlowDescription() {
         return flowDescription;
+    }
+
+    @Override
+    public String getStorageLocation() {
+        return storageLocation;
+    }
+
+    public void setStorageLocation(String storageLocation) {
+        this.storageLocation = storageLocation;
     }
 
     @Override

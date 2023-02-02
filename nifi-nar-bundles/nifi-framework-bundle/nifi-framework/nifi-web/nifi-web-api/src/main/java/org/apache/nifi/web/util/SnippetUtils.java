@@ -354,6 +354,16 @@ public final class SnippetUtils {
                 });
         }
 
+        // include services referenced by processor group but not by any processors
+        for (ControllerServiceNode csNode : group.getControllerServices(false)) {
+            if (csNode != null) {
+                ControllerServiceDTO serviceDto = dtoFactory.createControllerServiceDto(csNode);
+                if (allServicesReferenced.add(serviceDto)) {
+                    contents.getControllerServices().add(serviceDto);
+                }
+            }
+        }
+
         // Map child process group ID to the child process group for easy lookup
         final Map<String, ProcessGroupDTO> childGroupMap = contents.getProcessGroups().stream()
             .collect(Collectors.toMap(ComponentDTO::getId, childGroupDto -> childGroupDto));
@@ -498,7 +508,12 @@ public final class SnippetUtils {
                             }
 
                             final String newServiceId = serviceIdMap.get(currentServiceId);
-                            properties.put(descriptor.getName(), newServiceId);
+
+                            // If there is no new Controller Service ID, leave it to set to whatever it was. This was either an invalid reference
+                            // to begin with, or was a reference to a higher-level Controller Service, in which case the id shouldn't change.
+                            if (newServiceId != null) {
+                                properties.put(descriptor.getName(), newServiceId);
+                            }
                         }
                     }
                 }

@@ -23,7 +23,6 @@ import org.apache.nifi.controller.flow.FlowManager;
 import org.apache.nifi.controller.label.StandardLabel;
 import org.apache.nifi.controller.service.ControllerServiceNode;
 import org.apache.nifi.flow.ComponentType;
-import org.apache.nifi.flow.ScheduledState;
 import org.apache.nifi.flow.VersionedComponent;
 import org.apache.nifi.flow.VersionedConnection;
 import org.apache.nifi.flow.VersionedFlowCoordinates;
@@ -31,6 +30,7 @@ import org.apache.nifi.flow.VersionedLabel;
 import org.apache.nifi.flow.VersionedPort;
 import org.apache.nifi.flow.VersionedProcessGroup;
 import org.apache.nifi.flow.VersionedProcessor;
+import org.apache.nifi.groups.ProcessGroup;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.registry.flow.diff.DifferenceType;
 import org.apache.nifi.registry.flow.diff.FlowDifference;
@@ -58,6 +58,7 @@ public class FlowDifferenceFilters {
     public static boolean isEnvironmentalChange(final FlowDifference difference, final VersionedProcessGroup localGroup, final FlowManager flowManager) {
         return difference.getDifferenceType() == DifferenceType.BUNDLE_CHANGED
             || isVariableValueChange(difference)
+            || isAncestorVariableAdded(difference, flowManager)
             || isRpgUrlChange(difference)
             || isAddedOrRemovedRemotePort(difference)
             || isPublicPortNameChange(difference)
@@ -70,7 +71,34 @@ public class FlowDifferenceFilters {
             || isNewRetryConfigWithDefaultValue(difference, flowManager)
             || isNewZIndexLabelConfigWithDefaultValue(difference, flowManager)
             || isNewZIndexConnectionConfigWithDefaultValue(difference, flowManager)
+            || isRegistryUrlChange(difference)
             || isParameterContextChange(difference);
+    }
+
+    // The Registry URL may change if, for instance, a registry is moved to a new host, or is made secure, the port changes, etc.
+    // Since this can be handled by the client anyway, there's no need to flag this as a 'local modification'
+    private static boolean isRegistryUrlChange(final FlowDifference difference) {
+        if (difference.getDifferenceType() != DifferenceType.VERSIONED_FLOW_COORDINATES_CHANGED) {
+            return false;
+        }
+        if (!(difference.getValueA() instanceof VersionedFlowCoordinates)) {
+            return false;
+        }
+        if (!(difference.getValueB() instanceof VersionedFlowCoordinates)) {
+            return false;
+        }
+
+        final VersionedFlowCoordinates coordinatesA = (VersionedFlowCoordinates) difference.getValueA();
+        final VersionedFlowCoordinates coordinatesB = (VersionedFlowCoordinates) difference.getValueB();
+
+        if (Objects.equals(coordinatesA.getBucketId(), coordinatesB.getBucketId())
+            && Objects.equals(coordinatesA.getFlowId(), coordinatesB.getFlowId())
+            && Objects.equals(coordinatesA.getVersion(), coordinatesB.getVersion())) {
+
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -279,11 +307,12 @@ public class FlowDifferenceFilters {
             return false;
         }
 
-        // If Scheduled State transitions from null to ENABLED or ENABLED to null, consider it a "new" scheduled state.
-        if (fd.getValueA() == null && ScheduledState.ENABLED.equals(fd.getValueB())) {
+        // If Scheduled State transitions from null to a real state or
+        // from a real state to null, consider it a "new" scheduled state.
+        if (fd.getValueA() == null && fd.getValueB() != null) {
             return true;
         }
-        if (fd.getValueB() == null && "ENABLED".equals(fd.getValueA())) {
+        if (fd.getValueB() == null && fd.getValueA() != null) {
             return true;
         }
 
@@ -320,6 +349,26 @@ public class FlowDifferenceFilters {
 
     public static boolean isVariableValueChange(final FlowDifference flowDifference) {
         return flowDifference.getDifferenceType() == DifferenceType.VARIABLE_CHANGED;
+    }
+
+    public static boolean isAncestorVariableAdded(final FlowDifference fd, final FlowManager flowManager) {
+        if (fd.getDifferenceType() == DifferenceType.VARIABLE_ADDED) {
+            if (fd.getComponentA() instanceof InstantiatedVersionedComponent) {
+                final InstantiatedVersionedComponent componentA = (InstantiatedVersionedComponent) fd.getComponentA();
+                final ProcessGroup processGroup = flowManager.getGroup(componentA.getInstanceIdentifier());
+                if (processGroup.getVariableRegistry().getVariableKey(fd.getFieldName().get()) == null)  {
+                    return true;
+                }
+            } else if (fd.getComponentB() instanceof InstantiatedVersionedComponent) {
+                final InstantiatedVersionedComponent componentB = (InstantiatedVersionedComponent) fd.getComponentB();
+                final ProcessGroup processGroup = flowManager.getGroup(componentB.getInstanceIdentifier());
+                if (processGroup.getVariableRegistry().getVariableKey(fd.getFieldName().get()) == null)  {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     public static boolean isRpgUrlChange(final FlowDifference flowDifference) {

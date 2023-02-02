@@ -16,7 +16,19 @@
  */
 package org.apache.nifi.processors.standard;
 
-import static org.junit.Assert.assertEquals;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.nifi.controller.AbstractControllerService;
+import org.apache.nifi.dbcp.DBCPService;
+import org.apache.nifi.processor.exception.ProcessException;
+import org.apache.nifi.reporting.InitializationException;
+import org.apache.nifi.util.MockFlowFile;
+import org.apache.nifi.util.TestRunner;
+import org.apache.nifi.util.TestRunners;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.io.File;
 import java.io.IOException;
@@ -30,31 +42,16 @@ import java.sql.Types;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import com.fasterxml.jackson.core.JsonGenerationException;
-import com.fasterxml.jackson.databind.JsonMappingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.nifi.controller.AbstractControllerService;
-import org.apache.nifi.dbcp.DBCPService;
-import org.apache.nifi.processor.exception.ProcessException;
-import org.apache.nifi.reporting.InitializationException;
-import org.apache.nifi.util.MockFlowFile;
-import org.apache.nifi.util.TestRunner;
-import org.apache.nifi.util.TestRunners;
-import org.junit.BeforeClass;
-import org.junit.ClassRule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
 
 import static org.apache.nifi.flowfile.attributes.FragmentAttributes.FRAGMENT_COUNT;
 import static org.apache.nifi.flowfile.attributes.FragmentAttributes.FRAGMENT_ID;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class TestConvertJSONToSQL {
 
-    @ClassRule
-    public static TemporaryFolder folder = new TemporaryFolder();
+    private static final String DERBY_LOG_PROPERTY = "derby.stream.error.file";
 
     /**
      * Setting up Connection pooling is expensive operation.
@@ -62,11 +59,17 @@ public class TestConvertJSONToSQL {
      */
     static protected DBCPService service;
 
-    @BeforeClass
-    public static void setupClass() throws ProcessException, SQLException {
-        System.setProperty("derby.stream.error.file", "target/derby.log");
-        final File tempDir = folder.getRoot();
-        final File dbDir = new File(tempDir, "db");
+    @BeforeAll
+    public static void setupDerbyLog() throws ProcessException {
+        final File derbyLog = new File(getSystemTemporaryDirectory(), "derby.log");
+        derbyLog.deleteOnExit();
+        System.setProperty(DERBY_LOG_PROPERTY, derbyLog.getAbsolutePath());
+    }
+
+    @BeforeEach
+    public void setup() throws SQLException {
+        final File dbDir = new File(getEmptyDirectory(), "db");
+        dbDir.deleteOnExit();
         service = new MockDBCPService(dbDir.getAbsolutePath());
         final String createPersons = "CREATE TABLE PERSONS (id integer primary key, name varchar(100), code integer)";
         try (final Connection conn = service.getConnection()) {
@@ -76,8 +79,13 @@ public class TestConvertJSONToSQL {
         }
     }
 
+    @AfterAll
+    public static void cleanupDerbyLog() {
+        System.clearProperty(DERBY_LOG_PROPERTY);
+    }
+
     @Test
-    public void testInsert() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testInsert() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
 
         runner.addControllerService("dbcp", service);
@@ -103,7 +111,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testInsertStatementType() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testInsertStatementType() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
 
         runner.addControllerService("dbcp", service);
@@ -131,7 +139,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testInsertQuotedIdentifiers() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testInsertQuotedIdentifiers() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
         runner.addControllerService("dbcp", service);
         runner.enableControllerService(service);
@@ -159,7 +167,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testInsertQuotedTableIdentifier() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testInsertQuotedTableIdentifier() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
         runner.addControllerService("dbcp", service);
         runner.enableControllerService(service);
@@ -187,7 +195,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testInsertWithNullValue() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testInsertWithNullValue() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
 
         runner.addControllerService("dbcp", service);
@@ -213,7 +221,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testInsertBoolToInteger() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testInsertBoolToInteger() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
 
         runner.addControllerService("dbcp", service);
@@ -240,7 +248,7 @@ public class TestConvertJSONToSQL {
 
 
     @Test
-    public void testUpdateWithNullValue() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testUpdateWithNullValue() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
 
         runner.addControllerService("dbcp", service);
@@ -267,7 +275,7 @@ public class TestConvertJSONToSQL {
 
 
     @Test
-    public void testUpdateQuotedTableIdentifier() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testUpdateQuotedTableIdentifier() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
         runner.addControllerService("dbcp", service);
         runner.enableControllerService(service);
@@ -295,7 +303,7 @@ public class TestConvertJSONToSQL {
 
 
     @Test
-    public void testMultipleInserts() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testMultipleInserts() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
 
         runner.addControllerService("dbcp", service);
@@ -321,7 +329,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testMultipleInsertsQuotedIdentifiers() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testMultipleInsertsQuotedIdentifiers() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
         runner.addControllerService("dbcp", service);
         runner.enableControllerService(service);
@@ -348,7 +356,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testUpdateBasedOnPrimaryKey() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testUpdateBasedOnPrimaryKey() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
 
         runner.addControllerService("dbcp", service);
@@ -374,7 +382,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testUpdateBasedOnPrimaryKeyQuotedIdentifier() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testUpdateBasedOnPrimaryKeyQuotedIdentifier() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
         runner.addControllerService("dbcp", service);
         runner.enableControllerService(service);
@@ -401,7 +409,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testUnmappedFieldBehavior() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testUnmappedFieldBehavior() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
 
         runner.addControllerService("dbcp", service);
@@ -428,7 +436,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testUpdateBasedOnUpdateKey() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testUpdateBasedOnUpdateKey() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
 
         runner.addControllerService("dbcp", service);
@@ -455,7 +463,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testUpdateBasedOnUpdateKeyQuotedIdentifier() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testUpdateBasedOnUpdateKeyQuotedIdentifier() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
         runner.addControllerService("dbcp", service);
         runner.enableControllerService(service);
@@ -483,7 +491,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testUpdateBasedOnCompoundUpdateKey() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testUpdateBasedOnCompoundUpdateKey() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
 
         runner.addControllerService("dbcp", service);
@@ -512,7 +520,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testUpdateWithMissingFieldBasedOnCompoundUpdateKey() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testUpdateWithMissingFieldBasedOnCompoundUpdateKey() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
 
         runner.addControllerService("dbcp", service);
@@ -528,7 +536,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testUpdateWithMalformedJson() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testUpdateWithMalformedJson() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
 
         runner.addControllerService("dbcp", service);
@@ -544,7 +552,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testInsertWithMissingField() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testInsertWithMissingField() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
 
         runner.addControllerService("dbcp", service);
@@ -615,7 +623,7 @@ public class TestConvertJSONToSQL {
     } // End testInsertWithMissingColumnWarning()
 
     @Test
-    public void testInsertWithMissingColumnIgnore() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testInsertWithMissingColumnIgnore() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
 
         runner.addControllerService("dbcp", service);
@@ -642,7 +650,7 @@ public class TestConvertJSONToSQL {
     } // End testInsertWithMissingColumnIgnore()
 
     @Test
-    public void testUpdateWithMissingColumnFail() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testUpdateWithMissingColumnFail() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
 
         runner.addControllerService("dbcp", service);
@@ -659,7 +667,7 @@ public class TestConvertJSONToSQL {
     } // End testUpdateWithMissingColumnFail()
 
     @Test
-    public void testUpdateWithMissingColumnWarning() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testUpdateWithMissingColumnWarning() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
 
         runner.addControllerService("dbcp", service);
@@ -688,7 +696,7 @@ public class TestConvertJSONToSQL {
     } // End testUpdateWithMissingColumnWarning()
 
     @Test
-    public void testUpdateWithMissingColumnIgnore() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testUpdateWithMissingColumnIgnore() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
 
         runner.addControllerService("dbcp", service);
@@ -721,7 +729,7 @@ public class TestConvertJSONToSQL {
      *  Use PutSQL processor to verify converted value can be used and don't fail.
      */
     @Test
-    public void testCreateSqlStringValue() throws ProcessException, SQLException, JsonGenerationException, JsonMappingException, IOException, InitializationException {
+    public void testCreateSqlStringValue() throws ProcessException, SQLException, IOException, InitializationException {
         final TestRunner putSqlRunner = TestRunners.newTestRunner(PutSQL.class);
 
         final AtomicInteger id = new AtomicInteger(20);
@@ -733,7 +741,7 @@ public class TestConvertJSONToSQL {
 
         String tableName = "DIFTYPES";
         ObjectMapper mapper = new ObjectMapper();
-        ResultSet colrs = null;
+        ResultSet colrs;
         try (final Connection conn = service.getConnection()) {
             try (final Statement stmt = conn.createStatement()) {
                 String createDifferentTypes = "CREATE TABLE DIFTYPES (id integer primary key, b boolean, f float, dbl double, dcml decimal, d date)";
@@ -794,7 +802,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testDelete() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testDelete() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
         runner.addControllerService("dbcp", service);
         runner.enableControllerService(service);
@@ -820,7 +828,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testDeleteQuotedIdentifiers() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testDeleteQuotedIdentifiers() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
         runner.addControllerService("dbcp", service);
         runner.enableControllerService(service);
@@ -848,7 +856,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testDeleteQuotedTableIdentifier() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testDeleteQuotedTableIdentifier() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
         runner.addControllerService("dbcp", service);
         runner.enableControllerService(service);
@@ -876,7 +884,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testDeleteWithNullValue() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testDeleteWithNullValue() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
         runner.addControllerService("dbcp", service);
         runner.enableControllerService(service);
@@ -902,7 +910,7 @@ public class TestConvertJSONToSQL {
     }
 
     @Test
-    public void testAttributePrefix() throws InitializationException, ProcessException, SQLException, IOException {
+    public void testAttributePrefix() throws InitializationException, ProcessException, IOException {
         final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
         runner.addControllerService("dbcp", service);
         runner.enableControllerService(service);
@@ -928,6 +936,34 @@ public class TestConvertJSONToSQL {
         out.assertAttributeEquals("hiveql.args.3.value", "48");
 
         out.assertContentEquals("INSERT INTO PERSONS (\"ID\", \"NAME\", \"CODE\") VALUES (?, ?, ?)");
+    }
+
+    @Test
+    public void testUpdateStatementTypeWithStatementTypeAttribute() throws InitializationException, ProcessException, IOException {
+        final TestRunner runner = TestRunners.newTestRunner(ConvertJSONToSQL.class);
+
+        runner.addControllerService("dbcp", service);
+        runner.enableControllerService(service);
+        runner.setProperty(ConvertJSONToSQL.CONNECTION_POOL, "dbcp");
+        runner.setProperty(ConvertJSONToSQL.TABLE_NAME, "PERSONS");
+        runner.setProperty(ConvertJSONToSQL.STATEMENT_TYPE, ConvertJSONToSQL.USE_ATTR_TYPE);
+        Map<String, String> attrs = new HashMap<>();
+        attrs.put(ConvertJSONToSQL.STATEMENT_TYPE_ATTRIBUTE, "UPDATE");
+        runner.enqueue(Paths.get("src/test/resources/TestConvertJSONToSQL/person-1.json"), attrs);
+        runner.run();
+
+        runner.assertTransferCount(ConvertJSONToSQL.REL_ORIGINAL, 1);
+        runner.getFlowFilesForRelationship(ConvertJSONToSQL.REL_ORIGINAL).get(0).assertAttributeEquals(FRAGMENT_COUNT.key(), "1");
+        runner.assertTransferCount(ConvertJSONToSQL.REL_SQL, 1);
+        final MockFlowFile out = runner.getFlowFilesForRelationship(ConvertJSONToSQL.REL_SQL).get(0);
+        out.assertAttributeEquals("sql.args.1.type", String.valueOf(java.sql.Types.VARCHAR));
+        out.assertAttributeEquals("sql.args.1.value", "Mark");
+        out.assertAttributeEquals("sql.args.2.type", String.valueOf(Types.INTEGER));
+        out.assertAttributeEquals("sql.args.2.value", "48");
+        out.assertAttributeEquals("sql.args.3.type", String.valueOf(Types.INTEGER));
+        out.assertAttributeEquals("sql.args.3.value", "1");
+
+        out.assertContentEquals("UPDATE PERSONS SET NAME = ?, CODE = ? WHERE ID = ?");
     }
 
     /**
@@ -956,5 +992,14 @@ public class TestConvertJSONToSQL {
                 throw new ProcessException("getConnection failed: " + e);
             }
         }
+    }
+
+    private File getEmptyDirectory() {
+        final String randomDirectory = String.format("%s-%s", getClass().getSimpleName(), UUID.randomUUID());
+        return Paths.get(getSystemTemporaryDirectory(), randomDirectory).toFile();
+    }
+
+    private static String getSystemTemporaryDirectory() {
+        return System.getProperty("java.io.tmpdir");
     }
 }

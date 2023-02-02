@@ -16,22 +16,22 @@
  */
 package org.apache.nifi.integration.accesscontrol;
 
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 import javax.ws.rs.core.Response;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * Access control test for funnels.
+ * Access control test for flows.
  */
 public class ITFlowAccessControl {
 
     private static AccessControlHelper helper;
 
-    @BeforeClass
+    @BeforeAll
     public static void setup() throws Exception {
         helper = new AccessControlHelper("src/test/resources/access-control/nifi-flow.properties");
     }
@@ -87,6 +87,16 @@ public class ITFlowAccessControl {
     @Test
     public void testGetReportingTasks() throws Exception {
         helper.testGenericGetUri(helper.getBaseUrl() + "/flow/reporting-tasks");
+    }
+
+    /**
+     * Test get parameter providers.
+     *
+     * @throws Exception exception
+     */
+    @Test
+    public void testGetParameterProviders() throws Exception {
+        helper.testGenericGetUri(helper.getBaseUrl() + "/flow/parameter-providers");
     }
 
     /**
@@ -259,7 +269,7 @@ public class ITFlowAccessControl {
         assertEquals(403, response.getStatus());
     }
 
-    @AfterClass
+    @AfterAll
     public static void cleanup() throws Exception {
         helper.cleanup();
     }

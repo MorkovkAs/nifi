@@ -38,19 +38,19 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
-import static org.apache.nifi.processors.standard.util.FTPTransfer.createComponentProxyConfigSupplier;
 import static org.apache.nifi.processors.standard.util.FTPTransfer.BUFFER_SIZE;
 import static org.apache.nifi.processors.standard.util.FTPTransfer.CONNECTION_MODE;
 import static org.apache.nifi.processors.standard.util.FTPTransfer.CONNECTION_MODE_ACTIVE;
-import static org.apache.nifi.processors.standard.util.FTPTransfer.DATA_TIMEOUT;
 import static org.apache.nifi.processors.standard.util.FTPTransfer.CONNECTION_TIMEOUT;
-import static org.apache.nifi.processors.standard.util.FTPTransfer.UTF8_ENCODING;
-import static org.apache.nifi.processors.standard.util.FTPTransfer.USERNAME;
-import static org.apache.nifi.processors.standard.util.FTPTransfer.PASSWORD;
+import static org.apache.nifi.processors.standard.util.FTPTransfer.DATA_TIMEOUT;
 import static org.apache.nifi.processors.standard.util.FTPTransfer.HOSTNAME;
+import static org.apache.nifi.processors.standard.util.FTPTransfer.PASSWORD;
 import static org.apache.nifi.processors.standard.util.FTPTransfer.PORT;
 import static org.apache.nifi.processors.standard.util.FTPTransfer.TRANSFER_MODE;
 import static org.apache.nifi.processors.standard.util.FTPTransfer.TRANSFER_MODE_ASCII;
+import static org.apache.nifi.processors.standard.util.FTPTransfer.USERNAME;
+import static org.apache.nifi.processors.standard.util.FTPTransfer.UTF8_ENCODING;
+import static org.apache.nifi.processors.standard.util.FTPTransfer.createComponentProxyConfigSupplier;
 
 /**
  * Standard implementation of FTP Client Provider
@@ -79,11 +79,16 @@ public class StandardFTPClientProvider implements FTPClientProvider {
 
         final boolean attributesEmpty = attributes.isEmpty();
 
+        // Evaluate Hostname and Port properties based on the presence of attributes because ListFTP does not support FlowFile attributes
         final PropertyValue hostnameProperty = context.getProperty(HOSTNAME);
-        final String hostname = attributesEmpty ? hostnameProperty.getValue() : hostnameProperty.evaluateAttributeExpressions(attributes).getValue();
+        final String hostname = attributesEmpty
+                ? hostnameProperty.evaluateAttributeExpressions().getValue()
+                : hostnameProperty.evaluateAttributeExpressions(attributes).getValue();
 
         final PropertyValue portProperty = context.getProperty(PORT);
-        final int port = attributesEmpty ? portProperty.asInteger() : portProperty.evaluateAttributeExpressions(attributes).asInteger();
+        final int port = attributesEmpty
+                ? portProperty.evaluateAttributeExpressions().asInteger()
+                : portProperty.evaluateAttributeExpressions(attributes).asInteger();
         final String address = String.format(ADDRESS_FORMAT, hostname, port);
 
         try {
@@ -96,7 +101,9 @@ public class StandardFTPClientProvider implements FTPClientProvider {
         }
 
         final PropertyValue usernameProperty = context.getProperty(USERNAME);
-        final String username = attributesEmpty ? usernameProperty.getValue() : usernameProperty.evaluateAttributeExpressions(attributes).getValue();
+        final String username = attributesEmpty
+                ? usernameProperty.evaluateAttributeExpressions().getValue()
+                : usernameProperty.evaluateAttributeExpressions(attributes).getValue();
         final String password = context.getProperty(PASSWORD).evaluateAttributeExpressions(attributes).getValue();
 
         try {
@@ -143,11 +150,12 @@ public class StandardFTPClientProvider implements FTPClientProvider {
         client.setDataTimeout(dataTimeout);
         client.setDefaultTimeout(connectionTimeout);
         client.setRemoteVerificationEnabled(false);
+        client.setAutodetectUTF8(true);
 
         final boolean unicodeEnabled = context.getProperty(UTF8_ENCODING).isSet() ? context.getProperty(UTF8_ENCODING).asBoolean() : false;
+        // in non-UTF-8 mode, FTP control encoding should be left as default (ISO-8859-1)
         if (unicodeEnabled) {
             client.setControlEncoding(StandardCharsets.UTF_8.name());
-            client.setAutodetectUTF8(true);
         }
     }
 

@@ -38,8 +38,7 @@ import org.apache.nifi.parameter.StandardParameterReferenceManager;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.Processor;
 import org.apache.nifi.processor.StandardProcessContext;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -51,7 +50,8 @@ import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.function.BiConsumer;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class ParametersIT extends FrameworkIntegrationTest {
 
@@ -65,7 +65,7 @@ public class ParametersIT extends FrameworkIntegrationTest {
         final Connection updatedAttributeConnection = connect(updateAttribute, terminate, REL_SUCCESS);
 
         final ParameterReferenceManager referenceManager = new StandardParameterReferenceManager(getFlowController().getFlowManager());
-        final ParameterContext parameterContext = new StandardParameterContext(UUID.randomUUID().toString(), "param-context", referenceManager, null);
+        final ParameterContext parameterContext = createParameterContext(referenceManager);
         parameterContext.setParameters(Collections.singletonMap("test", new Parameter(new ParameterDescriptor.Builder().name("test").build(), "unit")));
 
         getRootGroup().setParameterContext(parameterContext);
@@ -116,10 +116,10 @@ public class ParametersIT extends FrameworkIntegrationTest {
         final Connection updatedAttributeConnection = connect(updateAttribute, terminate, REL_SUCCESS);
 
         final ParameterReferenceManager referenceManager = new StandardParameterReferenceManager(getFlowController().getFlowManager());
-        final ParameterContext parameterContext = new StandardParameterContext(UUID.randomUUID().toString(), "param-context", referenceManager, null);
+        final ParameterContext parameterContext = createParameterContext(referenceManager);
         parameterContext.setParameters(Collections.singletonMap("foo", new Parameter(new ParameterDescriptor.Builder().name("foo").build(), "bar")));
 
-        final ParameterContext referencedParameterContext = new StandardParameterContext(UUID.randomUUID().toString(), "param-context-2", referenceManager, null);
+        final ParameterContext referencedParameterContext =  createParameterContext("param-context-2", referenceManager);
         referencedParameterContext.setParameters(Collections.singletonMap("test", new Parameter(new ParameterDescriptor.Builder().name("test").build(), "unit")));
 
         parameterContext.setInheritedParameterContexts(Arrays.asList(referencedParameterContext));
@@ -145,7 +145,7 @@ public class ParametersIT extends FrameworkIntegrationTest {
         final Connection updatedAttributeConnection = connect(updateAttribute, terminate, REL_SUCCESS);
 
         final ParameterReferenceManager referenceManager = new StandardParameterReferenceManager(getFlowController().getFlowManager());
-        final ParameterContext parameterContext = new StandardParameterContext(UUID.randomUUID().toString(), "param-context", referenceManager, null);
+        final ParameterContext parameterContext = createParameterContext(referenceManager);
         parameterContext.setParameters(Collections.singletonMap("test", new Parameter(new ParameterDescriptor.Builder().name("test").build(), "unit")));
 
         getRootGroup().setParameterContext(parameterContext);
@@ -170,7 +170,7 @@ public class ParametersIT extends FrameworkIntegrationTest {
         final Connection updatedAttributeConnection = connect(updateAttribute, terminate, REL_SUCCESS);
 
         final ParameterReferenceManager referenceManager = new StandardParameterReferenceManager(getFlowController().getFlowManager());
-        final ParameterContext parameterContext = new StandardParameterContext(UUID.randomUUID().toString(), "param-context", referenceManager, null);
+        final ParameterContext parameterContext = createParameterContext(referenceManager);
         parameterContext.setParameters(Collections.singletonMap("test", new Parameter(new ParameterDescriptor.Builder().name("test").build(), "unit")));
 
         getRootGroup().setParameterContext(parameterContext);
@@ -196,7 +196,7 @@ public class ParametersIT extends FrameworkIntegrationTest {
         final Connection updatedAttributeConnection = connect(updateAttribute, terminate, REL_SUCCESS);
 
         final ParameterReferenceManager referenceManager = new StandardParameterReferenceManager(getFlowController().getFlowManager());
-        final ParameterContext parameterContext = new StandardParameterContext(UUID.randomUUID().toString(), "param-context", referenceManager, null);
+        final ParameterContext parameterContext = createParameterContext(referenceManager);
         parameterContext.setParameters(Collections.singletonMap("test", new Parameter(new ParameterDescriptor.Builder().name("test").build(), "unit")));
 
         getRootGroup().setParameterContext(parameterContext);
@@ -228,7 +228,7 @@ public class ParametersIT extends FrameworkIntegrationTest {
         final Connection updatedAttributeConnection = connect(updateAttribute, terminate, REL_SUCCESS);
 
         final ParameterReferenceManager referenceManager = new StandardParameterReferenceManager(getFlowController().getFlowManager());
-        final ParameterContext parameterContext = new StandardParameterContext(UUID.randomUUID().toString(), "param-context", referenceManager, null);
+        final ParameterContext parameterContext = createParameterContext(referenceManager);
         parameterContext.setParameters(Collections.singletonMap("test", new Parameter(new ParameterDescriptor.Builder().name("test").build(), "unit")));
 
         getRootGroup().setParameterContext(parameterContext);
@@ -256,7 +256,7 @@ public class ParametersIT extends FrameworkIntegrationTest {
         final Connection updatedAttributeConnection = connect(updateAttribute, terminate, REL_SUCCESS);
 
         final ParameterReferenceManager referenceManager = new StandardParameterReferenceManager(getFlowController().getFlowManager());
-        final ParameterContext parameterContext = new StandardParameterContext(UUID.randomUUID().toString(), "param-context", referenceManager, null);
+        final ParameterContext parameterContext = createParameterContext(referenceManager);
         parameterContext.setParameters(Collections.singletonMap("test", new Parameter(new ParameterDescriptor.Builder().name("test").build(), "unit")));
 
         getRootGroup().setParameterContext(parameterContext);
@@ -288,7 +288,7 @@ public class ParametersIT extends FrameworkIntegrationTest {
         final Connection updatedAttributeConnection = connect(updateAttribute, terminate, REL_SUCCESS);
 
         final ParameterReferenceManager referenceManager = new StandardParameterReferenceManager(getFlowController().getFlowManager());
-        final ParameterContext parameterContext = new StandardParameterContext(UUID.randomUUID().toString(), "param-context", referenceManager, null);
+        final ParameterContext parameterContext = createParameterContext(referenceManager);
         parameterContext.setParameters(Collections.singletonMap("test", new Parameter(new ParameterDescriptor.Builder().name("test").build(), "unit")));
 
         getRootGroup().setParameterContext(parameterContext);
@@ -330,7 +330,7 @@ public class ParametersIT extends FrameworkIntegrationTest {
         final ProcessorNode updateAttributeNoEL = createProcessorNode(UpdateAttributeNoEL.class);
 
         final ParameterReferenceManager referenceManager = new StandardParameterReferenceManager(getFlowController().getFlowManager());
-        final ParameterContext parameterContext = new StandardParameterContext(UUID.randomUUID().toString(), "param-context", referenceManager, null);
+        final ParameterContext parameterContext = createParameterContext(referenceManager);
         parameterContext.setParameters(Collections.singletonMap("test", new Parameter(new ParameterDescriptor.Builder().name("test").build(), "unit")));
 
         getRootGroup().setParameterContext(parameterContext);
@@ -370,7 +370,7 @@ public class ParametersIT extends FrameworkIntegrationTest {
         final Connection terminateConnection = connect(updateAttribute, getTerminateProcessor(), REL_SUCCESS);
 
         final ParameterReferenceManager referenceManager = new StandardParameterReferenceManager(getFlowController().getFlowManager());
-        final ParameterContext parameterContext = new StandardParameterContext(UUID.randomUUID().toString(), "param-context", referenceManager, null);
+        final ParameterContext parameterContext = createParameterContext(referenceManager);
         parameterContext.setParameters(Collections.singletonMap("test", new Parameter(new ParameterDescriptor.Builder().name("test").build(), "unit")));
 
         getRootGroup().setParameterContext(parameterContext);
@@ -400,7 +400,7 @@ public class ParametersIT extends FrameworkIntegrationTest {
         final ProcessorNode updateAttribute = createProcessorNode(UpdateAttributeWithEL.class);
 
         final ParameterReferenceManager referenceManager = new StandardParameterReferenceManager(getFlowController().getFlowManager());
-        final ParameterContext parameterContext = new StandardParameterContext(UUID.randomUUID().toString(), "param-context", referenceManager, null);
+        final ParameterContext parameterContext = createParameterContext(referenceManager);
         parameterContext.setParameters(Collections.singletonMap("test", new Parameter(new ParameterDescriptor.Builder().name("test").build(), "unit")));
 
         getRootGroup().setParameterContext(parameterContext);
@@ -435,7 +435,7 @@ public class ParametersIT extends FrameworkIntegrationTest {
         final ProcessorNode usernamePassword = createProcessorNode(UsernamePasswordProcessor.class);
 
         final ParameterReferenceManager referenceManager = new StandardParameterReferenceManager(getFlowController().getFlowManager());
-        final ParameterContext parameterContext = new StandardParameterContext(UUID.randomUUID().toString(), "param-context", referenceManager, null);
+        final ParameterContext parameterContext = createParameterContext(referenceManager);
         parameterContext.setParameters(Collections.singletonMap("pass", new Parameter(new ParameterDescriptor.Builder().name("pass").sensitive(true).build(), "secret")));
 
         getRootGroup().setParameterContext(parameterContext);
@@ -458,7 +458,7 @@ public class ParametersIT extends FrameworkIntegrationTest {
         final ProcessorNode usernamePassword = createProcessorNode(UsernamePasswordProcessor.class);
 
         final ParameterReferenceManager referenceManager = new StandardParameterReferenceManager(getFlowController().getFlowManager());
-        final ParameterContext parameterContext = new StandardParameterContext(UUID.randomUUID().toString(), "param-context", referenceManager, null);
+        final ParameterContext parameterContext = createParameterContext(referenceManager);
         parameterContext.setParameters(Collections.singletonMap("pass", new Parameter(new ParameterDescriptor.Builder().name("pass").sensitive(true).build(), "secret")));
 
         getRootGroup().setParameterContext(parameterContext);
@@ -466,12 +466,8 @@ public class ParametersIT extends FrameworkIntegrationTest {
         final Map<String, String> properties = new HashMap<>();
         properties.put("username", "${#{pass}}");
 
-        try {
-            usernamePassword.setProperties(properties);
-            Assert.fail("Was able to set properties when referencing sensitive parameter from within EL");
-        } catch (final IllegalArgumentException iae) {
-            // Expected. Since the parameter is sensitive, it may referenced by a sensitive property
-        }
+        assertThrows(IllegalArgumentException.class, () -> usernamePassword.setProperties(properties),
+                "Was able to set properties when referencing sensitive parameter from within EL");
     }
 
     @Test
@@ -479,7 +475,7 @@ public class ParametersIT extends FrameworkIntegrationTest {
         final ProcessorNode usernamePassword = createProcessorNode(UsernamePasswordProcessor.class);
 
         final ParameterReferenceManager referenceManager = new StandardParameterReferenceManager(getFlowController().getFlowManager());
-        final ParameterContext parameterContext = new StandardParameterContext(UUID.randomUUID().toString(), "param-context", referenceManager, null);
+        final ParameterContext parameterContext = createParameterContext(referenceManager);
         parameterContext.setParameters(Collections.singletonMap("pass", new Parameter(new ParameterDescriptor.Builder().name("pass").sensitive(true).build(), "secret")));
 
         getRootGroup().setParameterContext(parameterContext);
@@ -487,12 +483,20 @@ public class ParametersIT extends FrameworkIntegrationTest {
         final Map<String, String> properties = new HashMap<>();
         properties.put("password", "${#{pass}}");
 
-        try {
-            usernamePassword.setProperties(properties);
-            Assert.fail("Was able to set properties when referencing sensitive parameter from within EL");
-        } catch (final IllegalArgumentException iae) {
-            // Expected. Since the property is sensitive, it may reference a parameter only if that is the only value.
-        }
+        assertThrows(IllegalArgumentException.class, () -> usernamePassword.setProperties(properties),
+                "Was able to set properties when referencing sensitive parameter from within EL");
     }
 
+    private ParameterContext createParameterContext(final ParameterReferenceManager referenceManager) {
+        return createParameterContext("param-context", referenceManager);
+    }
+
+    private ParameterContext createParameterContext(final String name, final ParameterReferenceManager referenceManager) {
+        final ParameterContext parameterContext = new StandardParameterContext.Builder()
+                .id(UUID.randomUUID().toString())
+                .name(name)
+                .parameterReferenceManager(referenceManager)
+                .build();
+        return parameterContext;
+    }
 }

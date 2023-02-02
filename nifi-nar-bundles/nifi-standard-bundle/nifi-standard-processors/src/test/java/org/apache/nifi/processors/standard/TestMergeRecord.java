@@ -19,27 +19,32 @@ package org.apache.nifi.processors.standard;
 
 import org.apache.nifi.flowfile.attributes.CoreAttributes;
 import org.apache.nifi.reporting.InitializationException;
+import org.apache.nifi.serialization.SimpleRecordSchema;
 import org.apache.nifi.serialization.record.CommaSeparatedRecordReader;
 import org.apache.nifi.serialization.record.MockRecordWriter;
+import org.apache.nifi.serialization.record.RecordField;
+import org.apache.nifi.serialization.record.RecordFieldType;
+import org.apache.nifi.serialization.record.RecordSchema;
 import org.apache.nifi.util.MockFlowFile;
 import org.apache.nifi.util.TestRunner;
 import org.apache.nifi.util.TestRunners;
-import org.junit.Before;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class TestMergeRecord {
     private TestRunner runner;
     private CommaSeparatedRecordReader readerService;
     private MockRecordWriter writerService;
 
-    @Before
+    @BeforeEach
     public void setup() throws InitializationException {
         runner = TestRunners.newTestRunner(new MergeRecord());
 
@@ -88,6 +93,34 @@ public class TestMergeRecord {
         final MockFlowFile mff = runner.getFlowFilesForRelationship(MergeRecord.REL_MERGED).get(0);
         mff.assertAttributeEquals("record.count", "2");
         mff.assertContentEquals("header\nJohn,35\nJane,34\n");
+
+        runner.getFlowFilesForRelationship(MergeRecord.REL_ORIGINAL).forEach(
+                ff -> assertEquals(mff.getAttribute(CoreAttributes.UUID.key()), ff.getAttribute(MergeRecord.MERGE_UUID_ATTRIBUTE)));
+    }
+
+    @Test
+    public void testMergeSimpleDifferentWriteSchema() throws InitializationException {
+        // Exclude Age field
+        List<RecordField> writeFields = Collections.singletonList(
+          new RecordField("Name", RecordFieldType.STRING.getDataType())
+        );
+        RecordSchema writeSchema = new SimpleRecordSchema(writeFields);
+        writerService = new MockRecordWriter("header", false, -1, true, writeSchema);
+        runner.addControllerService("differentWriter", writerService);
+        runner.enableControllerService(writerService);
+
+        runner.setProperty(MergeRecord.RECORD_READER, "reader");
+        runner.setProperty(MergeRecord.RECORD_WRITER, "differentWriter");
+        runner.enqueue("Name, Age\nJohn, 35");
+        runner.enqueue("Name, Age\nJane, 34");
+
+        runner.run(2);
+        runner.assertTransferCount(MergeRecord.REL_MERGED, 1);
+        runner.assertTransferCount(MergeRecord.REL_ORIGINAL, 2);
+
+        final MockFlowFile mff = runner.getFlowFilesForRelationship(MergeRecord.REL_MERGED).get(0);
+        mff.assertAttributeEquals("record.count", "2");
+        mff.assertContentEquals("header\nJohn\nJane\n");
 
         runner.getFlowFilesForRelationship(MergeRecord.REL_ORIGINAL).forEach(
                 ff -> assertEquals(mff.getAttribute(CoreAttributes.UUID.key()), ff.getAttribute(MergeRecord.MERGE_UUID_ATTRIBUTE)));
@@ -186,7 +219,7 @@ public class TestMergeRecord {
 
         runner.run(1);
 
-        assertEquals("Fragment id=2 should remain in the incoming connection", 1, runner.getQueueSize().getObjectCount());
+        assertEquals(1, runner.getQueueSize().getObjectCount(), "Fragment id=2 should remain in the incoming connection");
         runner.assertTransferCount(MergeRecord.REL_MERGED, 2);
         runner.assertTransferCount(MergeRecord.REL_ORIGINAL, 4);
 
@@ -214,7 +247,7 @@ public class TestMergeRecord {
         runner.enqueue("Name, Age\nJohn, 35", attr1);
         runner.run(2);
 
-        assertEquals("Fragment should remain in the incoming connection", 1, runner.getQueueSize().getObjectCount());
+        assertEquals(1, runner.getQueueSize().getObjectCount(), "Fragment should remain in the incoming connection");
         runner.assertTransferCount(MergeRecord.REL_MERGED, 0);
         runner.assertTransferCount(MergeRecord.REL_ORIGINAL, 0);
         runner.assertTransferCount(MergeRecord.REL_FAILURE, 0);
@@ -227,7 +260,7 @@ public class TestMergeRecord {
         runner.enqueue("Name, Age\nJane, 34", attr2);
         runner.run(1);
 
-        assertEquals("Fragments should merge", 0, runner.getQueueSize().getObjectCount());
+        assertEquals(0, runner.getQueueSize().getObjectCount(), "Fragments should merge");
         runner.assertTransferCount(MergeRecord.REL_MERGED, 1);
         runner.assertTransferCount(MergeRecord.REL_ORIGINAL, 2);
         runner.assertTransferCount(MergeRecord.REL_FAILURE, 0);
@@ -269,7 +302,7 @@ public class TestMergeRecord {
 
         runner.run(1);
 
-        assertEquals("Fragment id=2 should remain in the incoming connection", 1, runner.getQueueSize().getObjectCount());
+        assertEquals(1, runner.getQueueSize().getObjectCount(), "Fragment id=2 should remain in the incoming connection");
         runner.assertTransferCount(MergeRecord.REL_MERGED, 1);
         runner.assertTransferCount(MergeRecord.REL_ORIGINAL, 2);
 
@@ -301,7 +334,7 @@ public class TestMergeRecord {
 
         runner.run(2);
 
-        assertEquals("Fragment id=1 should remain in the incoming connection", 1, runner.getQueueSize().getObjectCount());
+        assertEquals(1, runner.getQueueSize().getObjectCount(), "Fragment id=1 should remain in the incoming connection");
         runner.assertTransferCount(MergeRecord.REL_MERGED, 0);
         runner.assertTransferCount(MergeRecord.REL_ORIGINAL, 0);
 
@@ -309,7 +342,7 @@ public class TestMergeRecord {
 
         runner.run(1);
 
-        assertEquals("Fragment id=1 should be merged", 0, runner.getQueueSize().getObjectCount());
+        assertEquals(0, runner.getQueueSize().getObjectCount(), "Fragment id=1 should be merged");
         runner.assertTransferCount(MergeRecord.REL_MERGED, 1);
         runner.assertTransferCount(MergeRecord.REL_ORIGINAL, 2);
 
@@ -418,7 +451,11 @@ public class TestMergeRecord {
     }
 
     @Test
-    @Ignore("This unit test depends on timing and could potentially cause problems in an automated build environment. However, it can be useful for manual testing")
+    @EnabledIfSystemProperty(
+            named = "nifi.test.performance",
+            matches = "true",
+            disabledReason = "This unit test depends on timing and could potentially cause problems in an automated build environment. However, it can be useful for manual testing"
+    )
     public void testTimeout() throws InterruptedException {
         runner.setProperty(MergeRecord.MIN_RECORDS, "500");
         runner.setProperty(MergeRecord.MAX_BIN_AGE, "500 millis");

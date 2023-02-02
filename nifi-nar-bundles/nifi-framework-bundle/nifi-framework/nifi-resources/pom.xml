@@ -18,7 +18,7 @@
     <parent>
         <groupId>org.apache.nifi</groupId>
         <artifactId>nifi-framework</artifactId>
-        <version>1.17.0-SNAPSHOT</version>
+        <version>1.20.0-SNAPSHOT</version>
     </parent>
     <artifactId>nifi-resources</artifactId>
     <packaging>pom</packaging>
@@ -79,6 +79,7 @@
         <nifi.nar.library.autoload.directory>./extensions</nifi.nar.library.autoload.directory>
         <nifi.nar.working.directory>./work/nar/</nifi.nar.working.directory>
         <nifi.documentation.working.directory>./work/docs/components</nifi.documentation.working.directory>
+        <nifi.nar.unpack.uber.jar>false</nifi.nar.unpack.uber.jar>
 
         <nifi.sensitive.props.key.protected />
         <nifi.sensitive.props.algorithm>NIFI_PBKDF2_AES_GCM_256</nifi.sensitive.props.algorithm>
@@ -170,6 +171,7 @@
         <nifi.security.user.oidc.additional.scopes />
         <nifi.security.user.oidc.claim.identifying.user />
         <nifi.security.user.oidc.fallback.claims.identifying.user />
+        <nifi.security.user.oidc.claim.groups>groups</nifi.security.user.oidc.claim.groups>
         <nifi.security.user.oidc.truststore.strategy>JDK</nifi.security.user.oidc.truststore.strategy>
 
         <!-- nifi.properties: apache knox -->
@@ -183,12 +185,9 @@
         <nifi.security.user.saml.sp.entity.id />
         <nifi.security.user.saml.identity.attribute.name />
         <nifi.security.user.saml.group.attribute.name />
-        <nifi.security.user.saml.metadata.signing.enabled>false</nifi.security.user.saml.metadata.signing.enabled>
         <nifi.security.user.saml.request.signing.enabled>false</nifi.security.user.saml.request.signing.enabled>
         <nifi.security.user.saml.want.assertions.signed>true</nifi.security.user.saml.want.assertions.signed>
         <nifi.security.user.saml.signature.algorithm>http://www.w3.org/2001/04/xmldsig-more#rsa-sha256</nifi.security.user.saml.signature.algorithm>
-        <nifi.security.user.saml.signature.digest.algorithm>http://www.w3.org/2001/04/xmlenc#sha256</nifi.security.user.saml.signature.digest.algorithm>
-        <nifi.security.user.saml.message.logging.enabled>false</nifi.security.user.saml.message.logging.enabled>
         <nifi.security.user.saml.authentication.expiration>12 hours</nifi.security.user.saml.authentication.expiration>
         <nifi.security.user.saml.single.logout.enabled>false</nifi.security.user.saml.single.logout.enabled>
         <nifi.security.user.saml.http.client.truststore.strategy>JDK</nifi.security.user.saml.http.client.truststore.strategy>
@@ -256,6 +255,8 @@
         <!-- nifi.properties: runtime monitoring properties -->
         <nifi.monitor.long.running.task.schedule>1 min</nifi.monitor.long.running.task.schedule>
         <nifi.monitor.long.running.task.threshold>5 mins</nifi.monitor.long.running.task.threshold>
+
+        <nifi.performance.tracking.percentage>0</nifi.performance.tracking.percentage>
     </properties>
     <build>
         <plugins>

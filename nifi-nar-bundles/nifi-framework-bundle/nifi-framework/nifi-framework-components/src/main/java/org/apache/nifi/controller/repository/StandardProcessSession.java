@@ -38,6 +38,8 @@ import org.apache.nifi.controller.repository.io.FlowFileAccessOutputStream;
 import org.apache.nifi.controller.repository.io.LimitedInputStream;
 import org.apache.nifi.controller.repository.io.TaskTerminationInputStream;
 import org.apache.nifi.controller.repository.io.TaskTerminationOutputStream;
+import org.apache.nifi.controller.repository.metrics.PerformanceTracker;
+import org.apache.nifi.controller.repository.metrics.PerformanceTrackingInputStream;
 import org.apache.nifi.controller.repository.metrics.StandardFlowFileEvent;
 import org.apache.nifi.controller.state.StandardStateMap;
 import org.apache.nifi.flowfile.FlowFile;
@@ -137,6 +139,7 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
     private final Map<FlowFile, Path> deleteOnCommit = new HashMap<>();
     private final long sessionId;
     private final String connectableDescription;
+    private final PerformanceTracker performanceTracker;
 
     private Map<String, Long> countersOnCommit;
     private Map<String, Long> immediateCounters;
@@ -180,14 +183,15 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
     private final String retryAttribute;
     private final FlowFileLinkage flowFileLinkage = new FlowFileLinkage();
 
-    public StandardProcessSession(final RepositoryContext context, final TaskTermination taskTermination) {
+    public StandardProcessSession(final RepositoryContext context, final TaskTermination taskTermination, final PerformanceTracker performanceTracker) {
         this.context = context;
         this.taskTermination = taskTermination;
+        this.performanceTracker = performanceTracker;
 
         this.provenanceReporter = context.createProvenanceReporter(this::isFlowFileKnown, this);
         this.sessionId = idGenerator.getAndIncrement();
         this.connectableDescription = context.getConnectableDescription();
-        this.claimCache = context.createContentClaimWriteCache();
+        this.claimCache = context.createContentClaimWriteCache(performanceTracker);
         LOG.trace("Session {} created for {}", this, connectableDescription);
         processingStartTime = System.nanoTime();
         retryAttribute = "retryCount." + context.getConnectable().getIdentifier();
@@ -344,17 +348,22 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
                     }
                 }
             } else {
-                final Connection finalDestination = destinations.remove(destinations.size() - 1); // remove last element
-                final FlowFileRecord currRec = record.getCurrent();
-                final StandardFlowFileRecord.Builder builder = new StandardFlowFileRecord.Builder().fromFlowFile(currRec);
-                builder.removeAttributes(retryAttribute);
+                FlowFileRecord currRec = record.getCurrent();
 
+                // If there's a retry attribute present, remove it. The attribute should only live while the FlowFile is being processed by the current component
+                if (currRec.getAttribute(retryAttribute) != null) {
+                    currRec = new StandardFlowFileRecord.Builder().fromFlowFile(currRec).removeAttributes(retryAttribute).build();
+                    record.setWorking(currRec, retryAttribute, null, false);
+                }
+
+                final Connection finalDestination = destinations.remove(destinations.size() - 1); // remove last element
                 record.setDestination(finalDestination.getFlowFileQueue());
-                record.setWorking(builder.build(), false);
                 incrementConnectionInputCounts(finalDestination, record);
 
                 for (final Connection destination : destinations) { // iterate over remaining destinations and "clone" as needed
                     incrementConnectionInputCounts(destination, record);
+
+                    final StandardFlowFileRecord.Builder builder = new StandardFlowFileRecord.Builder().fromFlowFile(currRec);
                     builder.id(context.getNextFlowFileSequence());
 
                     final String newUuid = UUID.randomUUID().toString();
@@ -368,7 +377,7 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
                     if (claim != null) {
                         context.getContentRepository().incrementClaimaintCount(claim);
                     }
-                    newRecord.setWorking(clone, Collections.<String, String>emptyMap(), false);
+                    newRecord.setWorking(clone, Collections.emptyMap(), false);
 
                     newRecord.setDestination(destination.getFlowFileQueue());
                     newRecord.setTransferRelationship(record.getTransferRelationship());
@@ -546,10 +555,6 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
     private synchronized void commit(final boolean asynchronous) {
         checkpoint(this.checkpoint != null); // If a checkpoint already exists, we need to copy the collection
         commit(this.checkpoint, asynchronous);
-
-        acknowledgeRecords();
-        resetState();
-
         this.checkpoint = null;
     }
 
@@ -564,6 +569,7 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
     @SuppressWarnings({"unchecked", "rawtypes"})
     protected void commit(final Checkpoint checkpoint, final boolean asynchronous) {
         try {
+            performanceTracker.beginSessionCommit();
             final long commitStartNanos = System.nanoTime();
 
             resetReadClaim();
@@ -594,7 +600,7 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
             final long flowFileRepoUpdateFinishNanos = System.nanoTime();
             final long flowFileRepoUpdateNanos = flowFileRepoUpdateFinishNanos - flowFileRepoUpdateStart;
 
-            if (LOG.isInfoEnabled()) {
+            if (LOG.isDebugEnabled()) {
                 for (final RepositoryRecord record : checkpoint.records.values()) {
                     if (record.isMarkedForAbort()) {
                         final FlowFileRecord flowFile = record.getCurrent();
@@ -646,7 +652,7 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
             }
             checkpoint.deleteOnCommit.clear();
 
-            if (LOG.isInfoEnabled()) {
+            if (LOG.isDebugEnabled()) {
                 final String sessionSummary = summarizeEvents(checkpoint);
                 if (!sessionSummary.isEmpty()) {
                     LOG.debug("{} for {}, committed the following events: {}", this, connectableDescription, sessionSummary);
@@ -710,6 +716,11 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
                 }
             }
 
+            // Acknowledge records in order to update counts for incoming connections' queues
+            acknowledgeRecords();
+
+            // Reset the internal state, now that the session has been committed
+            resetState();
         } catch (final Exception e) {
             LOG.error("Failed to commit session {}. Will roll back.", this, e);
 
@@ -727,6 +738,8 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
             } else {
                 throw new ProcessException(e);
             }
+        } finally {
+            performanceTracker.endSessionCommit();
         }
     }
 
@@ -2597,7 +2610,8 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
                         }
 
                         final InputStream limitingInputStream = new LimitingInputStream(new DisableOnCloseInputStream(currentReadClaimStream), flowFile.getSize());
-                        final ContentClaimInputStream contentClaimInputStream = new ContentClaimInputStream(context.getContentRepository(), claim, contentClaimOffset, limitingInputStream);
+                        final ContentClaimInputStream contentClaimInputStream = new ContentClaimInputStream(context.getContentRepository(), claim,
+                            contentClaimOffset, limitingInputStream, performanceTracker);
                         return contentClaimInputStream;
                     }
                 }
@@ -2609,8 +2623,13 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
                 }
 
                 currentReadClaim = claim.getResourceClaim();
+
+                performanceTracker.beginContentRead();
                 final InputStream contentRepoStream = context.getContentRepository().read(claim.getResourceClaim());
-                StreamUtils.skip(contentRepoStream, claim.getOffset() + contentClaimOffset);
+                performanceTracker.endContentRead();
+
+                final InputStream performanceTrackInputStream = new PerformanceTrackingInputStream(contentRepoStream, performanceTracker);
+                StreamUtils.skip(performanceTrackInputStream, claim.getOffset() + contentClaimOffset);
                 final InputStream bufferedContentStream = new BufferedInputStream(contentRepoStream);
                 final ByteCountingInputStream byteCountingInputStream = new ByteCountingInputStream(bufferedContentStream, claim.getOffset() + contentClaimOffset);
                 currentReadClaimStream = byteCountingInputStream;
@@ -2621,12 +2640,12 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
                 // Finally, we need to wrap the InputStream in a ContentClaimInputStream so that if mark/reset is used, we can provide that capability
                 // without buffering data in memory.
                 final InputStream limitingInputStream = new LimitingInputStream(new DisableOnCloseInputStream(currentReadClaimStream), flowFile.getSize());
-                final ContentClaimInputStream contentClaimInputStream = new ContentClaimInputStream(context.getContentRepository(), claim, contentClaimOffset, limitingInputStream);
+                final ContentClaimInputStream contentClaimInputStream = new ContentClaimInputStream(context.getContentRepository(), claim, contentClaimOffset, limitingInputStream, performanceTracker);
                 return contentClaimInputStream;
             } else {
                 claimCache.flush(claim);
 
-                final InputStream rawInStream = new ContentClaimInputStream(context.getContentRepository(), claim, contentClaimOffset);
+                final InputStream rawInStream = new ContentClaimInputStream(context.getContentRepository(), claim, contentClaimOffset, performanceTracker);
                 return rawInStream;
             }
         } catch (final ContentNotFoundException cnfe) {
@@ -2970,7 +2989,8 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
             ensureNotAppending(newClaim);
 
             final OutputStream rawStream = claimCache.write(newClaim);
-            final OutputStream disableOnClose = new DisableOnCloseOutputStream(rawStream);
+            final OutputStream nonFlushable = new NonFlushableOutputStream(rawStream);
+            final OutputStream disableOnClose = new DisableOnCloseOutputStream(nonFlushable);
             final ByteCountingOutputStream countingOut = new ByteCountingOutputStream(disableOnClose);
 
             final FlowFile sourceFlowFile = source;
@@ -3106,7 +3126,8 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
 
             ensureNotAppending(newClaim);
             try (final OutputStream stream = claimCache.write(newClaim);
-                final OutputStream disableOnClose = new DisableOnCloseOutputStream(stream);
+                final NonFlushableOutputStream nonFlushableOutputStream = new NonFlushableOutputStream(stream);
+                final OutputStream disableOnClose = new DisableOnCloseOutputStream(nonFlushableOutputStream);
                 final ByteCountingOutputStream countingOut = new ByteCountingOutputStream(disableOnClose)) {
                 try {
                     writeRecursionSet.add(source);
@@ -3398,7 +3419,8 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
                 final InputStream disableOnCloseIn = new DisableOnCloseInputStream(limitedIn);
                 final ByteCountingInputStream countingIn = new ByteCountingInputStream(disableOnCloseIn, bytesRead);
                 final OutputStream os = claimCache.write(newClaim);
-                final OutputStream disableOnCloseOut = new DisableOnCloseOutputStream(os);
+                final OutputStream nonFlushableOut = new NonFlushableOutputStream(os);
+                final OutputStream disableOnCloseOut = new DisableOnCloseOutputStream(nonFlushableOut);
                 final ByteCountingOutputStream countingOut = new ByteCountingOutputStream(disableOnCloseOut)) {
 
                 writeRecursionSet.add(source);
@@ -3598,7 +3620,6 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
             claimCache.flush(record.getCurrentClaim());
             final long copyCount = context.getContentRepository().exportTo(record.getCurrentClaim(), destination, append, record.getCurrentClaimOffset(), source.getSize());
             bytesRead += copyCount;
-            bytesWritten += copyCount;
         } catch (final ContentNotFoundException nfe) {
             handleContentNotFound(nfe, record);
         } catch (final Throwable t) {
@@ -3644,6 +3665,8 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
                     throw cnfe;
                 } finally {
                     decrementReadCount(source);
+                    final long streamBytesRead = countingStream.getBytesRead();
+                    bytesRead += streamBytesRead;
 
                     // if cnfeThrown is true, we don't need to re-throw the Exception; it will propagate.
                     if (!cnfeThrown && ffais.getContentNotFoundException() != null) {

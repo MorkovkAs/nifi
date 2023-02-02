@@ -17,6 +17,7 @@
 package org.apache.nifi.jasn1;
 
 import com.beanit.asn1bean.ber.ReverseByteArrayOutputStream;
+import com.beanit.asn1bean.ber.types.BerBitString;
 import com.beanit.asn1bean.ber.types.BerBoolean;
 import com.beanit.asn1bean.ber.types.BerInteger;
 import com.beanit.asn1bean.ber.types.BerOctetString;
@@ -24,6 +25,8 @@ import com.beanit.asn1bean.ber.types.string.BerUTF8String;
 import org.apache.nifi.jasn1.example.BasicTypeSet;
 import org.apache.nifi.jasn1.example.BasicTypes;
 import org.apache.nifi.jasn1.example.Composite;
+import org.apache.nifi.jasn1.tbcd.TBCDSTRING;
+import org.apache.nifi.jasn1.tbcd.TbcdStringWrapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,6 +52,10 @@ public class ExampleDataGenerator {
         generateBasicTypes(dir);
 
         generateComposite(dir);
+
+        generateMultiRecord(dir);
+
+        generateTbcdString(dir);
     }
 
     private static void generateBasicTypes(File dir) throws IOException {
@@ -60,6 +67,7 @@ public class ExampleDataGenerator {
             basicTypes.setI(new BerInteger(789));
             basicTypes.setOctStr(new BerOctetString(new byte[]{1, 2, 3, 4, 5}));
             basicTypes.setUtf8Str(new BerUTF8String("Some UTF-8 String. こんにちは世界。"));
+            basicTypes.setBitStr(new BerBitString(new boolean[]{false, true, true, false, true, false, false, false}));
             final int encoded = basicTypes.encode(rev);
             out.write(rev.getArray(), 0, encoded);
             LOG.info("Generated {} bytes to {}", encoded, file);
@@ -110,6 +118,46 @@ public class ExampleDataGenerator {
             out.write(rev.getArray(), 0, encoded);
             LOG.info("Generated {} bytes to {}", encoded, file);
 
+        }
+    }
+
+    private static void generateMultiRecord(File dir) throws IOException {
+        final File file = new File(dir, "multi-record.dat");
+        try (
+                final ReverseByteArrayOutputStream rev = new ReverseByteArrayOutputStream(1024);
+                final OutputStream out = new FileOutputStream(file)
+        ) {
+
+            int record1Length = write(rev, out, true, 123, new byte[]{1, 2, 3, 4, 5}, "Some UTF-8 String. こんにちは世界。");
+            int record2Length = write(rev, out, false, 456, new byte[]{6, 7, 8, 9, 10}, "Another UTF-8 String. こんばんは世界。");
+
+            LOG.info("Generated {} bytes to {}", record1Length + record2Length, file);
+        }
+    }
+
+    private static int write(ReverseByteArrayOutputStream rev, OutputStream out, boolean b, int i, byte[] octStr, String uft8Str) throws IOException {
+        BasicTypes basicTypes = new BasicTypes();
+        basicTypes.setB(new BerBoolean(b));
+        basicTypes.setI(new BerInteger(i));
+        basicTypes.setOctStr(new BerOctetString(octStr));
+        basicTypes.setUtf8Str(new BerUTF8String(uft8Str));
+
+        int encoded = basicTypes.encode(rev);
+        out.write(rev.getArray(), 0, encoded);
+
+        return encoded;
+    }
+
+    private static void generateTbcdString(File dir) throws IOException {
+        final File file = new File(dir, "tbcd-string.dat");
+        try (final ReverseByteArrayOutputStream rev = new ReverseByteArrayOutputStream(1024);
+                final OutputStream out = new FileOutputStream(file)) {
+            final TbcdStringWrapper tbcdStringWrapper = new TbcdStringWrapper();
+            tbcdStringWrapper.setTbcdString(new TBCDSTRING(new byte[]{1, 2, 3, 4, 5, 6, 7, 8}));
+            tbcdStringWrapper.setOctetString(new BerOctetString(new byte[]{1, 2, 3, 4, 5, 6, 7, 8}));
+            final int encoded = tbcdStringWrapper.encode(rev);
+            out.write(rev.getArray(), 0, encoded);
+            LOG.info("Generated {} bytes to {}", encoded, file);
         }
     }
 }

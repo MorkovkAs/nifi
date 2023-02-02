@@ -17,7 +17,7 @@
     <parent>
         <artifactId>nifi-registry-ranger</artifactId>
         <groupId>org.apache.nifi.registry</groupId>
-        <version>1.17.0-SNAPSHOT</version>
+        <version>1.20.0-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -29,7 +29,7 @@
         <dependency>
             <groupId>org.apache.nifi.registry</groupId>
             <artifactId>nifi-registry-ranger-plugin</artifactId>
-            <version>1.17.0-SNAPSHOT</version>
+            <version>1.20.0-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -56,10 +56,45 @@
                             <descriptors>
                                 <descriptor>src/main/assembly/extension.xml</descriptor>
                             </descriptors>
+                            <formats>zip</formats>
                         </configuration>
                     </execution>
                 </executions>
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>targz</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <artifactId>maven-assembly-plugin</artifactId>
+                        <configuration>
+                            <attach>true</attach>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>assembly-ranger-extension</id>
+                                <goals>
+                                    <goal>single</goal>
+                                </goals>
+                                <phase>package</phase>
+                                <configuration>
+                                    <descriptors>
+                                        <descriptor>src/main/assembly/extension.xml</descriptor>
+                                    </descriptors>
+                                    <formats>tar.gz</formats>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

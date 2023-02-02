@@ -59,6 +59,7 @@ public class TestJASN1RecordReader implements JASN1ReadRecordTester {
             assertEquals(789, record.getAsInt("i").intValue());
             assertEquals("0102030405", record.getValue("octStr"));
             assertEquals("Some UTF-8 String. こんにちは世界。", record.getValue("utf8Str"));
+            assertEquals("01101000", record.getValue("bitStr"));
 
             record = reader.nextRecord(true, false);
             assertNull(record);
@@ -116,6 +117,56 @@ public class TestJASN1RecordReader implements JASN1ReadRecordTester {
                 assertEquals(i, child.getAsInt("i").intValue());
                 assertEquals(octetStringExpectedValueConverter(new byte[]{(byte) i, (byte) i, (byte) i}), child.getValue("octStr"));
             }
+
+            record = reader.nextRecord(true, false);
+            assertNull(record);
+        }
+    }
+
+    @Test
+    public void testMultiRecord() throws Exception {
+        try (final InputStream input = TestJASN1RecordReader.class.getResourceAsStream("/examples/multi-record.dat")) {
+            final JASN1RecordReader reader = new JASN1RecordReader("org.apache.nifi.jasn1.example.BasicTypes", null,
+                    new RecordSchemaProvider(), Thread.currentThread().getContextClassLoader(), null,
+                    input, new MockComponentLog("id", new JASN1Reader()));
+
+            final RecordSchema schema = reader.getSchema();
+            assertEquals("BasicTypes", schema.getSchemaName().orElse(null));
+
+            Record record1 = reader.nextRecord(true, false);
+            assertNotNull(record1);
+
+            assertEquals(true, record1.getAsBoolean("b"));
+            assertEquals(123, record1.getAsInt("i").intValue());
+            assertEquals("0102030405", record1.getValue("octStr"));
+            assertEquals("Some UTF-8 String. こんにちは世界。", record1.getValue("utf8Str"));
+
+            Record record2 = reader.nextRecord(true, false);
+            assertNotNull(record2);
+
+            assertEquals(false, record2.getAsBoolean("b"));
+            assertEquals(456, record2.getAsInt("i").intValue());
+            assertEquals("060708090A", record2.getValue("octStr"));
+            assertEquals("Another UTF-8 String. こんばんは世界。", record2.getValue("utf8Str"));
+
+            Record record3 = reader.nextRecord(true, false);
+            assertNull(record3);
+        }
+    }
+
+    @Test
+    public void testTbcdString() throws Exception {
+        try (final InputStream input = TestJASN1RecordReader.class.getResourceAsStream("/examples/tbcd-string.dat")) {
+
+            final JASN1RecordReader reader = new JASN1RecordReader("org.apache.nifi.jasn1.tbcd.TbcdStringWrapper", null,
+                    new RecordSchemaProvider(), Thread.currentThread().getContextClassLoader(), null,
+                    input, new MockComponentLog("id", new JASN1Reader()));
+
+            final RecordSchema schema = reader.getSchema();
+            assertEquals("TbcdStringWrapper", schema.getSchemaName().orElse(null));
+
+            Record record = reader.nextRecord(true, false);
+            assertNotNull(record);
 
             record = reader.nextRecord(true, false);
             assertNull(record);

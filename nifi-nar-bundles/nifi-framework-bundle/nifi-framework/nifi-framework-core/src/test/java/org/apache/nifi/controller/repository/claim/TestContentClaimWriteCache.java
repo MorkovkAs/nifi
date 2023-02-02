@@ -17,24 +17,26 @@
 
 package org.apache.nifi.controller.repository.claim;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
+import org.apache.nifi.controller.repository.FileSystemRepository;
+import org.apache.nifi.controller.repository.StandardContentRepositoryContext;
+import org.apache.nifi.controller.repository.TestFileSystemRepository;
+import org.apache.nifi.controller.repository.metrics.NopPerformanceTracker;
+import org.apache.nifi.controller.repository.util.DiskUtils;
+import org.apache.nifi.events.EventReporter;
+import org.apache.nifi.stream.io.StreamUtils;
+import org.apache.nifi.util.NiFiProperties;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import org.apache.nifi.controller.repository.FileSystemRepository;
-import org.apache.nifi.controller.repository.StandardContentRepositoryContext;
-import org.apache.nifi.controller.repository.TestFileSystemRepository;
-import org.apache.nifi.controller.repository.util.DiskUtils;
-import org.apache.nifi.events.EventReporter;
-import org.apache.nifi.stream.io.StreamUtils;
-import org.apache.nifi.util.NiFiProperties;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class TestContentClaimWriteCache {
 
@@ -43,7 +45,7 @@ public class TestContentClaimWriteCache {
     private final File rootFile = new File("target/testContentClaimWriteCache");
     private NiFiProperties nifiProperties;
 
-    @Before
+    @BeforeEach
     public void setup() throws IOException {
         nifiProperties = NiFiProperties.createBasicNiFiProperties(TestFileSystemRepository.class.getResource("/conf/nifi.properties").getFile());
         if (rootFile.exists()) {
@@ -55,14 +57,14 @@ public class TestContentClaimWriteCache {
         repository.purge();
     }
 
-    @After
+    @AfterEach
     public void shutdown() throws IOException {
         repository.shutdown();
     }
 
     @Test
     public void testFlushWriteCorrectData() throws IOException {
-        final ContentClaimWriteCache cache = new StandardContentClaimWriteCache(repository, 4);
+        final ContentClaimWriteCache cache = new StandardContentClaimWriteCache(repository, new NopPerformanceTracker(), 4);
 
         final ContentClaim claim1 = cache.getContentClaim();
         assertNotNull(claim1);
@@ -78,7 +80,7 @@ public class TestContentClaimWriteCache {
         final InputStream in = repository.read(claim1);
         final byte[] buff = new byte[(int) claim1.getLength()];
         StreamUtils.fillBuffer(in, buff);
-        Assert.assertArrayEquals("hellogood-bye".getBytes(), buff);
+        assertArrayEquals("hellogood-bye".getBytes(), buff);
 
         final ContentClaim claim2 = cache.getContentClaim();
         final OutputStream out2 = cache.write(claim2);
@@ -92,7 +94,7 @@ public class TestContentClaimWriteCache {
         final InputStream in2 = repository.read(claim2);
         final byte[] buff2 = new byte[(int) claim2.getLength()];
         StreamUtils.fillBuffer(in2, buff2);
-        Assert.assertArrayEquals("good-dayhello".getBytes(), buff2);
+        assertArrayEquals("good-dayhello".getBytes(), buff2);
     }
 
 }

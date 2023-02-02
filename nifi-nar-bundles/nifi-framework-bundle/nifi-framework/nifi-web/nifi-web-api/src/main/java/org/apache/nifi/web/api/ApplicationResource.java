@@ -50,9 +50,9 @@ import org.apache.nifi.util.ComponentIdGenerator;
 import org.apache.nifi.util.NiFiProperties;
 import org.apache.nifi.web.NiFiServiceFacade;
 import org.apache.nifi.web.Revision;
-import org.apache.nifi.web.api.cookie.ApplicationCookieName;
-import org.apache.nifi.web.api.cookie.ApplicationCookieService;
-import org.apache.nifi.web.api.cookie.StandardApplicationCookieService;
+import org.apache.nifi.web.security.cookie.ApplicationCookieName;
+import org.apache.nifi.web.security.cookie.ApplicationCookieService;
+import org.apache.nifi.web.security.cookie.StandardApplicationCookieService;
 import org.apache.nifi.web.api.dto.ControllerServiceDTO;
 import org.apache.nifi.web.api.dto.ControllerServiceReferencingComponentDTO;
 import org.apache.nifi.web.api.dto.RevisionDTO;
@@ -371,7 +371,7 @@ public abstract class ApplicationResource {
      */
     protected boolean isTwoPhaseRequest(final HttpServletRequest httpServletRequest) {
         final String transactionId = httpServletRequest.getHeader(RequestReplicator.REQUEST_TRANSACTION_ID_HEADER);
-        return transactionId != null && isConnectedToCluster();
+        return transactionId != null && isClustered();
     }
 
     /**
@@ -914,6 +914,15 @@ public abstract class ApplicationResource {
         }
 
         throw new NoClusterCoordinatorException();
+    }
+
+    protected Optional<NodeIdentifier> getPrimaryNodeId() {
+        final ClusterCoordinator coordinator = getClusterCoordinator();
+        if (coordinator == null) {
+            throw new NoClusterCoordinatorException();
+        }
+
+        return Optional.ofNullable(coordinator.getPrimaryNode());
     }
 
     protected ReplicationTarget getReplicationTarget() {

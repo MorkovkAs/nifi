@@ -31,6 +31,7 @@ import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.AbstractProcessor;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.util.StandardValidators;
+import org.apache.nifi.processors.gcp.util.GoogleUtils;
 import org.apache.nifi.proxy.ProxyConfiguration;
 
 import java.net.Proxy;
@@ -106,16 +107,13 @@ public abstract class AbstractGCPProcessor<
             .build();
 
     /**
-     * Links to the {@link GCPCredentialsService} which provides credentials for this particular processor.
+     * Deprecated - Use {@link GoogleUtils#GCP_CREDENTIALS_PROVIDER_SERVICE} instead
      */
+    @Deprecated
     public static final PropertyDescriptor GCP_CREDENTIALS_PROVIDER_SERVICE = new PropertyDescriptor.Builder()
-            .name("gcp-credentials-provider-service")
-            .name("GCP Credentials Provider Service")
-            .description("The Controller Service used to obtain Google Cloud Platform credentials.")
-            .required(true)
-            .identifiesControllerService(GCPCredentialsService.class)
+            .fromPropertyDescriptor(GoogleUtils.GCP_CREDENTIALS_PROVIDER_SERVICE)
+            .name("GCP Credentials Provider Service") // For backward compatibility
             .build();
-
 
     protected volatile CloudService cloudService;
 
@@ -214,19 +212,22 @@ public abstract class AbstractGCPProcessor<
      */
     protected TransportOptions getTransportOptions(ProcessContext context) {
         final ProxyConfiguration proxyConfiguration = ProxyConfiguration.getConfiguration(context, () -> {
-            final String proxyHost = context.getProperty(PROXY_HOST).evaluateAttributeExpressions().getValue();
-            final Integer proxyPort = context.getProperty(PROXY_PORT).evaluateAttributeExpressions().asInteger();
-            if (proxyHost != null && proxyPort != null && proxyPort > 0) {
-                final ProxyConfiguration componentProxyConfig = new ProxyConfiguration();
-                final String proxyUser = context.getProperty(HTTP_PROXY_USERNAME).evaluateAttributeExpressions().getValue();
-                final String proxyPassword = context.getProperty(HTTP_PROXY_PASSWORD).evaluateAttributeExpressions().getValue();
-                componentProxyConfig.setProxyType(Proxy.Type.HTTP);
-                componentProxyConfig.setProxyServerHost(proxyHost);
-                componentProxyConfig.setProxyServerPort(proxyPort);
-                componentProxyConfig.setProxyUserName(proxyUser);
-                componentProxyConfig.setProxyUserPassword(proxyPassword);
-                return componentProxyConfig;
+            if (context.getProperty(PROXY_HOST).isSet() && context.getProperty(PROXY_PORT).isSet()) {
+                final String proxyHost = context.getProperty(PROXY_HOST).evaluateAttributeExpressions().getValue();
+                final Integer proxyPort = context.getProperty(PROXY_PORT).evaluateAttributeExpressions().asInteger();
+                if (proxyHost != null && proxyPort != null && proxyPort > 0) {
+                    final ProxyConfiguration componentProxyConfig = new ProxyConfiguration();
+                    final String proxyUser = context.getProperty(HTTP_PROXY_USERNAME).evaluateAttributeExpressions().getValue();
+                    final String proxyPassword = context.getProperty(HTTP_PROXY_PASSWORD).evaluateAttributeExpressions().getValue();
+                    componentProxyConfig.setProxyType(Proxy.Type.HTTP);
+                    componentProxyConfig.setProxyServerHost(proxyHost);
+                    componentProxyConfig.setProxyServerPort(proxyPort);
+                    componentProxyConfig.setProxyUserName(proxyUser);
+                    componentProxyConfig.setProxyUserPassword(proxyPassword);
+                    return componentProxyConfig;
+                }
             }
+
             return ProxyConfiguration.DIRECT_CONFIGURATION;
         });
 

@@ -26,7 +26,6 @@ import org.apache.nifi.util.MockFlowFile;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.HashMap;
@@ -40,13 +39,7 @@ import static org.apache.nifi.processors.azure.storage.utils.ADLSAttributes.ATTR
 import static org.apache.nifi.processors.azure.storage.utils.ADLSAttributes.ATTR_NAME_FILESYSTEM;
 import static org.apache.nifi.processors.azure.storage.utils.ADLSAttributes.ATTR_NAME_LENGTH;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 
 public class ITPutAzureDataLakeStorage extends AbstractAzureDataLakeStorageIT {
 
@@ -251,19 +244,6 @@ public class ITPutAzureDataLakeStorage extends AbstractAzureDataLakeStorageIT {
         runProcessor(FILE_DATA, attributes);
 
         assertFailure();
-    }
-
-    @Test
-    public void testPutFileButFailedToAppend() {
-        DataLakeFileClient fileClient = mock(DataLakeFileClient.class);
-        InputStream stream = mock(InputStream.class);
-        doThrow(NullPointerException.class).when(fileClient).append(any(InputStream.class), anyLong(), anyLong());
-
-        assertThrows(NullPointerException.class, () -> {
-            PutAzureDataLakeStorage.uploadContent(fileClient, stream, FILE_DATA.length);
-
-            verify(fileClient).delete();
-        });
     }
 
     private Map<String, String> createAttributesMap() {

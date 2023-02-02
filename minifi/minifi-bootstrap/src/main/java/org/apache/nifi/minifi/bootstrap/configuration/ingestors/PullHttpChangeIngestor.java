@@ -17,40 +17,15 @@
 
 package org.apache.nifi.minifi.bootstrap.configuration.ingestors;
 
-import okhttp3.Credentials;
-import okhttp3.HttpUrl;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-import okhttp3.ResponseBody;
-import org.apache.nifi.c2.client.api.ConfigurationFileHolder;
-import org.apache.nifi.c2.client.api.Differentiator;
-import org.apache.nifi.minifi.bootstrap.RunMiNiFi;
-import org.apache.nifi.minifi.bootstrap.configuration.ConfigurationChangeNotifier;
-import org.apache.nifi.minifi.bootstrap.configuration.differentiators.WholeConfigDifferentiator;
-import org.apache.nifi.minifi.bootstrap.util.ByteBufferInputStream;
-import org.apache.nifi.minifi.commons.schema.ConfigSchema;
-import org.apache.nifi.minifi.commons.schema.SecurityPropertiesSchema;
-import org.apache.nifi.minifi.commons.schema.common.ConvertableSchema;
-import org.apache.nifi.minifi.commons.schema.common.StringUtil;
-import org.apache.nifi.minifi.commons.schema.serialization.SchemaLoader;
-import org.slf4j.LoggerFactory;
-import org.yaml.snakeyaml.Yaml;
+import static org.apache.nifi.minifi.bootstrap.configuration.ConfigurationChangeCoordinator.NOTIFIER_INGESTORS_KEY;
+import static org.apache.nifi.minifi.bootstrap.configuration.differentiators.WholeConfigDifferentiator.WHOLE_CONFIG_KEY;
 
-import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLSocketFactory;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.TrustManagerFactory;
-import javax.net.ssl.X509TrustManager;
-import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.nio.ByteBuffer;
 import java.security.KeyStore;
-import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -58,9 +33,25 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
-
-import static org.apache.nifi.minifi.bootstrap.configuration.ConfigurationChangeCoordinator.NOTIFIER_INGESTORS_KEY;
-import static org.apache.nifi.minifi.bootstrap.configuration.differentiators.WholeConfigDifferentiator.WHOLE_CONFIG_KEY;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.X509TrustManager;
+import okhttp3.Credentials;
+import okhttp3.HttpUrl;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
+import org.apache.nifi.minifi.bootstrap.ConfigurationFileHolder;
+import org.apache.nifi.minifi.bootstrap.configuration.ConfigurationChangeNotifier;
+import org.apache.nifi.minifi.bootstrap.configuration.differentiators.Differentiator;
+import org.apache.nifi.minifi.bootstrap.configuration.differentiators.WholeConfigDifferentiator;
+import org.apache.nifi.minifi.bootstrap.util.ConfigTransformer;
+import org.apache.nifi.minifi.commons.schema.common.StringUtil;
+import org.apache.nifi.security.ssl.StandardKeyStoreBuilder;
+import org.apache.nifi.security.ssl.StandardSslContextBuilder;
+import org.apache.nifi.security.ssl.StandardTrustManagerBuilder;
+import org.slf4j.LoggerFactory;
 
 
 public class PullHttpChangeIngestor extends AbstractPullChangeIngestor {
@@ -109,7 +100,6 @@ public class PullHttpChangeIngestor extends AbstractPullChangeIngestor {
     private volatile String connectionScheme;
     private volatile String lastEtag = "";
     private volatile boolean useEtag = false;
-    private volatile boolean overrideSecurity = false;
 
     public PullHttpChangeIngestor() {
         logger = LoggerFactory.getLogger(PullHttpChangeIngestor.class);
@@ -151,14 +141,6 @@ public class PullHttpChangeIngestor extends AbstractPullChangeIngestor {
         } else {
             throw new IllegalArgumentException("Property, " + USE_ETAG_KEY + ", to specify whether to use the ETag header, must either be a value boolean value (\"true\" or \"false\") or left to " +
                     "the default value of \"false\". It is set to \"" + useEtagString + "\".");
-        }
-
-        final String overrideSecurityProperties = (String) properties.getOrDefault(OVERRIDE_SECURITY, "false");
-        if ("true".equalsIgnoreCase(overrideSecurityProperties) || "false".equalsIgnoreCase(overrideSecurityProperties)) {
-            overrideSecurity = Boolean.parseBoolean(overrideSecurityProperties);
-        } else {
-            throw new IllegalArgumentException("Property, " + OVERRIDE_SECURITY + ", to specify whether to override security properties must either be a value boolean value (\"true\" or \"false\")" +
-                    " or left to the default value of \"false\". It is set to \"" + overrideSecurityProperties + "\".");
         }
 
         httpClientReference.set(null);
@@ -214,7 +196,7 @@ public class PullHttpChangeIngestor extends AbstractPullChangeIngestor {
         } else {
             differentiator = WholeConfigDifferentiator.getByteBufferDifferentiator();
         }
-        differentiator.initialize(properties, configurationFileHolder);
+        differentiator.initialize(configurationFileHolder);
     }
 
 
@@ -234,8 +216,8 @@ public class PullHttpChangeIngestor extends AbstractPullChangeIngestor {
                 .build();
 
         final Request.Builder requestBuilder = new Request.Builder()
-                .get()
-                .url(url);
+            .get()
+            .url(url);
 
         if (useEtag) {
             requestBuilder.addHeader("If-None-Match", lastEtag);
@@ -264,29 +246,9 @@ public class PullHttpChangeIngestor extends AbstractPullChangeIngestor {
                 return;
             }
 
-            final ByteBuffer bodyByteBuffer = ByteBuffer.wrap(body.bytes());
-            ByteBuffer readOnlyNewConfig = null;
-
             // checking if some parts of the configuration must be preserved
-            if (overrideSecurity) {
-                readOnlyNewConfig = bodyByteBuffer.asReadOnlyBuffer();
-            } else {
-                logger.debug("Preserving previous security properties...");
-
-                // get the current security properties from the current configuration file
-                final File configFile = new File(properties.get().getProperty(RunMiNiFi.MINIFI_CONFIG_FILE_KEY));
-                ConvertableSchema<ConfigSchema> configSchema = SchemaLoader.loadConvertableSchemaFromYaml(new FileInputStream(configFile));
-                ConfigSchema currentSchema = configSchema.convert();
-                SecurityPropertiesSchema secProps = currentSchema.getSecurityProperties();
-
-                // override the security properties in the pulled configuration with the previous properties
-                configSchema = SchemaLoader.loadConvertableSchemaFromYaml(new ByteBufferInputStream(bodyByteBuffer.duplicate()));
-                ConfigSchema newSchema = configSchema.convert();
-                newSchema.setSecurityProperties(secProps);
-
-                // return the updated configuration preserving the previous security configuration
-                readOnlyNewConfig = ByteBuffer.wrap(new Yaml().dump(newSchema.toMap()).getBytes()).asReadOnlyBuffer();
-            }
+            ByteBuffer readOnlyNewConfig =
+                ConfigTransformer.overrideNonFlowSectionsFromOriginalSchema(body.bytes(), configurationFileHolder.getConfigFileReference().get().duplicate(), properties.get());
 
             if (differentiator.isNew(readOnlyNewConfig)) {
                 logger.debug("New change received, notifying listener");
@@ -310,51 +272,40 @@ public class PullHttpChangeIngestor extends AbstractPullChangeIngestor {
         final String keystoreLocation = properties.getProperty(KEYSTORE_LOCATION_KEY);
         final String keystorePass = properties.getProperty(KEYSTORE_PASSWORD_KEY);
         final String keystoreType = properties.getProperty(KEYSTORE_TYPE_KEY);
-
         assertKeystorePropertiesSet(keystoreLocation, keystorePass, keystoreType);
 
-        // prepare the keystore
-        final KeyStore keyStore = KeyStore.getInstance(keystoreType);
-
-        try (FileInputStream keyStoreStream = new FileInputStream(keystoreLocation)) {
-            keyStore.load(keyStoreStream, keystorePass.toCharArray());
+        final KeyStore keyStore;
+        try (final FileInputStream keyStoreStream = new FileInputStream(keystoreLocation)) {
+            keyStore = new StandardKeyStoreBuilder()
+                    .type(keystoreType)
+                    .inputStream(keyStoreStream)
+                    .password(keystorePass.toCharArray())
+                    .build();
         }
 
-        final KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-        keyManagerFactory.init(keyStore, keystorePass.toCharArray());
-
-        // load truststore
         final String truststoreLocation = properties.getProperty(TRUSTSTORE_LOCATION_KEY);
         final String truststorePass = properties.getProperty(TRUSTSTORE_PASSWORD_KEY);
         final String truststoreType = properties.getProperty(TRUSTSTORE_TYPE_KEY);
         assertTruststorePropertiesSet(truststoreLocation, truststorePass, truststoreType);
 
-        KeyStore truststore = KeyStore.getInstance(truststoreType);
-        final TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance("X509");
-        truststore.load(new FileInputStream(truststoreLocation), truststorePass.toCharArray());
-        trustManagerFactory.init(truststore);
-
-        final X509TrustManager x509TrustManager;
-        TrustManager[] trustManagers = trustManagerFactory.getTrustManagers();
-        if (trustManagers[0] != null) {
-            x509TrustManager = (X509TrustManager) trustManagers[0];
-        } else {
-            throw new IllegalStateException("List of trust managers is null");
+        final KeyStore truststore;
+        try (final FileInputStream trustStoreStream = new FileInputStream(truststoreLocation)) {
+            truststore = new StandardKeyStoreBuilder()
+                    .type(truststoreType)
+                    .inputStream(trustStoreStream)
+                    .password(truststorePass.toCharArray())
+                    .build();
         }
 
-        SSLContext tempSslContext;
-        try {
-            tempSslContext = SSLContext.getInstance("TLS");
-        } catch (NoSuchAlgorithmException e) {
-            logger.warn("Unable to use 'TLS' for the PullHttpChangeIngestor due to NoSuchAlgorithmException. Will attempt to use the default algorithm.", e);
-            tempSslContext = SSLContext.getDefault();
-        }
-
-        final SSLContext sslContext = tempSslContext;
-        sslContext.init(keyManagerFactory.getKeyManagers(), trustManagerFactory.getTrustManagers(), null);
-
+        final X509TrustManager trustManager = new StandardTrustManagerBuilder().trustStore(truststore).build();
+        final SSLContext sslContext = new StandardSslContextBuilder()
+                .keyStore(keyStore)
+                .keyPassword(keystorePass.toCharArray())
+                .trustStore(truststore)
+                .build();
         final SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
-        okHttpClientBuilder.sslSocketFactory(sslSocketFactory, x509TrustManager);
+
+        okHttpClientBuilder.sslSocketFactory(sslSocketFactory, trustManager);
     }
 
     private void assertKeystorePropertiesSet(String location, String password, String type) {

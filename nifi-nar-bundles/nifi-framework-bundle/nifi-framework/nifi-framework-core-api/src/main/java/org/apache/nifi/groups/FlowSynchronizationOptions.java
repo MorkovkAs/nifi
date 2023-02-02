@@ -35,6 +35,8 @@ public class FlowSynchronizationOptions {
     private final boolean updateRpgUrls;
     private final Duration componentStopTimeout;
     private final ComponentStopTimeoutAction timeoutAction;
+    private final ScheduledStateChangeListener scheduledStateChangeListener;
+    private final String topLevelGroupId;
 
     private FlowSynchronizationOptions(final Builder builder) {
         this.componentIdGenerator = builder.componentIdGenerator;
@@ -49,6 +51,8 @@ public class FlowSynchronizationOptions {
         this.updateRpgUrls = builder.updateRpgUrls;
         this.componentStopTimeout = builder.componentStopTimeout;
         this.timeoutAction = builder.timeoutAction;
+        this.scheduledStateChangeListener = builder.scheduledStateChangeListener;
+        this.topLevelGroupId = builder.topLevelGroupId;
     }
 
     public ComponentIdGenerator getComponentIdGenerator() {
@@ -99,6 +103,14 @@ public class FlowSynchronizationOptions {
         return timeoutAction;
     }
 
+    public ScheduledStateChangeListener getScheduledStateChangeListener() {
+        return scheduledStateChangeListener;
+    }
+
+    public String getTopLevelGroupId() {
+        return topLevelGroupId;
+    }
+
     public static class Builder {
         private ComponentIdGenerator componentIdGenerator;
         private Function<VersionedComponent, String> componentComparisonIdLookup;
@@ -109,10 +121,11 @@ public class FlowSynchronizationOptions {
         private boolean updateGroupVersionControlSnapshot = true;
         private boolean updateExistingVariables = false;
         private boolean updateRpgUrls = false;
+        private ScheduledStateChangeListener scheduledStateChangeListener;
         private PropertyDecryptor propertyDecryptor = value -> value;
         private Duration componentStopTimeout = Duration.ofSeconds(30);
         private ComponentStopTimeoutAction timeoutAction = ComponentStopTimeoutAction.THROW_TIMEOUT_EXCEPTION;
-
+        private String topLevelGroupId;
 
         /**
          * Specifies the Component ID Generator to use for generating UUID's of components that are to be added to a ProcessGroup
@@ -247,6 +260,15 @@ public class FlowSynchronizationOptions {
             return this;
         }
 
+        /**
+         * Specifies a callback whose methods will be called when component scheduled states are updated by the synchronizer
+         * @param listener the ScheduledStateChangeListener to use
+         * @return the builder
+         */
+        public Builder scheduledStateChangeListener(final ScheduledStateChangeListener listener) {
+            this.scheduledStateChangeListener = listener;
+            return this;
+        }
 
         public FlowSynchronizationOptions build() {
             if (componentIdGenerator == null) {
@@ -258,8 +280,21 @@ public class FlowSynchronizationOptions {
             if (componentScheduler == null) {
                 throw new IllegalStateException("Must set Component Scheduler");
             }
+            if (scheduledStateChangeListener == null) {
+                scheduledStateChangeListener = ScheduledStateChangeListener.EMPTY;
+            }
 
             return new FlowSynchronizationOptions(this);
+        }
+
+        /**
+         * Specifies the identifier of the top level group that scopes the synchronization.
+         * @param topLevelGroupId the top level group id
+         * @return the builder
+         */
+        public Builder topLevelGroupId(final String topLevelGroupId) {
+            this.topLevelGroupId = topLevelGroupId;
+            return this;
         }
 
         public static Builder from(final FlowSynchronizationOptions options) {
@@ -276,6 +311,8 @@ public class FlowSynchronizationOptions {
             builder.propertyDecryptor = options.getPropertyDecryptor();
             builder.componentStopTimeout = options.getComponentStopTimeout();
             builder.timeoutAction = options.getComponentStopTimeoutAction();
+            builder.scheduledStateChangeListener = options.getScheduledStateChangeListener();
+            builder.topLevelGroupId = options.getTopLevelGroupId();
 
             return builder;
         }

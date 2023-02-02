@@ -39,13 +39,12 @@ import org.apache.nifi.nar.StandardExtensionDiscoveringManager;
 import org.apache.nifi.nar.SystemBundle;
 import org.apache.nifi.provenance.MockProvenanceRepository;
 import org.apache.nifi.registry.VariableRegistry;
-import org.apache.nifi.registry.flow.FlowRegistryClient;
 import org.apache.nifi.registry.variable.FileBasedVariableRegistry;
 import org.apache.nifi.reporting.BulletinRepository;
 import org.apache.nifi.util.NiFiProperties;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import java.io.File;
@@ -55,7 +54,7 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class TestStandardReportingContext {
 
@@ -69,11 +68,10 @@ public class TestStandardReportingContext {
     private ExtensionDiscoveringManager extensionManager;
     private BulletinRepository bulletinRepo;
     private VariableRegistry variableRegistry;
-    private FlowRegistryClient flowRegistry;
     private StatusHistoryRepository statusHistoryRepository;
     private volatile String propsFile = TestStandardReportingContext.class.getResource("/flowcontrollertest.nifi.properties").getFile();
 
-    @Before
+    @BeforeEach
     public void setup() {
         flowFileEventRepo = Mockito.mock(FlowFileEventRepository.class);
         auditService = Mockito.mock(AuditService.class);
@@ -129,14 +127,13 @@ public class TestStandardReportingContext {
 
         authorizer = new MockPolicyBasedAuthorizer(groups1, users1, policies1);
         variableRegistry = new FileBasedVariableRegistry(nifiProperties.getVariableRegistryPropertiesPaths());
-        flowRegistry = Mockito.mock(FlowRegistryClient.class);
 
         bulletinRepo = Mockito.mock(BulletinRepository.class);
         controller = FlowController.createStandaloneInstance(flowFileEventRepo, nifiProperties, authorizer, auditService, encryptor,
-                bulletinRepo, variableRegistry, flowRegistry, extensionManager, statusHistoryRepository);
+                bulletinRepo, variableRegistry, extensionManager, statusHistoryRepository);
     }
 
-    @After
+    @AfterEach
     public void cleanup() throws Exception {
         controller.shutdown(true);
         FileUtils.deleteDirectory(new File("./target/flowcontrollertest"));

@@ -22,15 +22,15 @@ import org.apache.nifi.util.MockComponentLog;
 import org.apache.nifi.util.MockFlowFile;
 import org.apache.nifi.util.TestRunner;
 import org.apache.nifi.util.TestRunners;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
 
-import static junit.framework.TestCase.assertTrue;
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class TestExecuteStateless {
     private static final String HELLO_WORLD = "Hello World";
@@ -39,7 +39,7 @@ public class TestExecuteStateless {
 
     private TestRunner runner;
 
-    @Before
+    @BeforeEach
     public void setup() {
         runner = TestRunners.newTestRunner(ExecuteStateless.class);
         runner.setProperty(ExecuteStateless.DATAFLOW_SPECIFICATION_STRATEGY, ExecuteStateless.SPEC_FROM_FILE);
@@ -88,7 +88,6 @@ public class TestExecuteStateless {
         runner.assertAllFlowFilesTransferred(ExecuteStateless.REL_OUTPUT, 0);
     }
 
-
     @Test
     public void testRouteToFailureWithInput() {
         runner.setProperty(ExecuteStateless.DATAFLOW_FILE, "src/test/resources/route-to-desired-port.json");
@@ -99,7 +98,7 @@ public class TestExecuteStateless {
         runner.enqueue("B", Collections.singletonMap("desired.port", "B"));
         runner.enqueue("C", Collections.singletonMap("desired.port", "C"));
 
-        runner.run(3, true, true, 60000L);
+        runner.run(3, true, true, 300_000L);
 
         runner.assertTransferCount(ExecuteStateless.REL_OUTPUT, 3);
         runner.assertTransferCount(ExecuteStateless.REL_ORIGINAL, 3);

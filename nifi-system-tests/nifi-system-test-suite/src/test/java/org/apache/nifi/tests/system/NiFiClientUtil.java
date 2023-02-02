@@ -21,6 +21,7 @@ import org.apache.nifi.controller.AbstractPort;
 import org.apache.nifi.controller.queue.LoadBalanceCompression;
 import org.apache.nifi.controller.queue.LoadBalanceStrategy;
 import org.apache.nifi.controller.queue.QueueSize;
+import org.apache.nifi.parameter.ParameterProviderConfiguration;
 import org.apache.nifi.provenance.search.SearchableField;
 import org.apache.nifi.remote.protocol.SiteToSiteTransportProtocol;
 import org.apache.nifi.scheduling.ExecutionNode;
@@ -29,6 +30,7 @@ import org.apache.nifi.toolkit.cli.impl.client.nifi.ConnectionClient;
 import org.apache.nifi.toolkit.cli.impl.client.nifi.NiFiClient;
 import org.apache.nifi.toolkit.cli.impl.client.nifi.NiFiClientException;
 import org.apache.nifi.toolkit.cli.impl.client.nifi.ProcessorClient;
+import org.apache.nifi.toolkit.cli.impl.client.nifi.VersionsClient;
 import org.apache.nifi.web.api.dto.BundleDTO;
 import org.apache.nifi.web.api.dto.ConfigVerificationResultDTO;
 import org.apache.nifi.web.api.dto.ConnectableDTO;
@@ -37,11 +39,14 @@ import org.apache.nifi.web.api.dto.ControllerServiceDTO;
 import org.apache.nifi.web.api.dto.CounterDTO;
 import org.apache.nifi.web.api.dto.CountersSnapshotDTO;
 import org.apache.nifi.web.api.dto.FlowFileSummaryDTO;
+import org.apache.nifi.web.api.dto.FlowRegistryClientDTO;
 import org.apache.nifi.web.api.dto.FlowSnippetDTO;
 import org.apache.nifi.web.api.dto.NodeDTO;
 import org.apache.nifi.web.api.dto.ParameterContextDTO;
 import org.apache.nifi.web.api.dto.ParameterContextReferenceDTO;
 import org.apache.nifi.web.api.dto.ParameterDTO;
+import org.apache.nifi.web.api.dto.ParameterProviderConfigurationDTO;
+import org.apache.nifi.web.api.dto.ParameterProviderDTO;
 import org.apache.nifi.web.api.dto.PortDTO;
 import org.apache.nifi.web.api.dto.ProcessGroupDTO;
 import org.apache.nifi.web.api.dto.ProcessorConfigDTO;
@@ -49,9 +54,12 @@ import org.apache.nifi.web.api.dto.ProcessorDTO;
 import org.apache.nifi.web.api.dto.RemoteProcessGroupDTO;
 import org.apache.nifi.web.api.dto.ReportingTaskDTO;
 import org.apache.nifi.web.api.dto.RevisionDTO;
+import org.apache.nifi.web.api.dto.SnippetDTO;
 import org.apache.nifi.web.api.dto.VariableDTO;
 import org.apache.nifi.web.api.dto.VariableRegistryDTO;
 import org.apache.nifi.web.api.dto.VerifyConfigRequestDTO;
+import org.apache.nifi.web.api.dto.VersionControlInformationDTO;
+import org.apache.nifi.web.api.dto.VersionedFlowDTO;
 import org.apache.nifi.web.api.dto.flow.FlowDTO;
 import org.apache.nifi.web.api.dto.flow.ProcessGroupFlowDTO;
 import org.apache.nifi.web.api.dto.provenance.ProvenanceDTO;
@@ -64,15 +72,24 @@ import org.apache.nifi.web.api.entity.ConnectionStatusEntity;
 import org.apache.nifi.web.api.entity.ControllerServiceEntity;
 import org.apache.nifi.web.api.entity.ControllerServiceRunStatusEntity;
 import org.apache.nifi.web.api.entity.ControllerServicesEntity;
+import org.apache.nifi.web.api.entity.CopySnippetRequestEntity;
 import org.apache.nifi.web.api.entity.CountersEntity;
 import org.apache.nifi.web.api.entity.DropRequestEntity;
+import org.apache.nifi.web.api.entity.FlowEntity;
 import org.apache.nifi.web.api.entity.FlowFileEntity;
+import org.apache.nifi.web.api.entity.FlowRegistryClientEntity;
 import org.apache.nifi.web.api.entity.ListingRequestEntity;
 import org.apache.nifi.web.api.entity.NodeEntity;
 import org.apache.nifi.web.api.entity.ParameterContextEntity;
 import org.apache.nifi.web.api.entity.ParameterContextReferenceEntity;
 import org.apache.nifi.web.api.entity.ParameterContextUpdateRequestEntity;
 import org.apache.nifi.web.api.entity.ParameterEntity;
+import org.apache.nifi.web.api.entity.ParameterGroupConfigurationEntity;
+import org.apache.nifi.web.api.entity.ParameterProviderApplyParametersRequestEntity;
+import org.apache.nifi.web.api.entity.ParameterProviderConfigurationEntity;
+import org.apache.nifi.web.api.entity.ParameterProviderEntity;
+import org.apache.nifi.web.api.entity.ParameterProviderParameterApplicationEntity;
+import org.apache.nifi.web.api.entity.ParameterProviderParameterFetchEntity;
 import org.apache.nifi.web.api.entity.PortEntity;
 import org.apache.nifi.web.api.entity.ProcessGroupEntity;
 import org.apache.nifi.web.api.entity.ProcessGroupFlowEntity;
@@ -83,10 +100,14 @@ import org.apache.nifi.web.api.entity.ReportingTaskEntity;
 import org.apache.nifi.web.api.entity.ReportingTaskRunStatusEntity;
 import org.apache.nifi.web.api.entity.ReportingTasksEntity;
 import org.apache.nifi.web.api.entity.ScheduleComponentsEntity;
+import org.apache.nifi.web.api.entity.SnippetEntity;
+import org.apache.nifi.web.api.entity.StartVersionControlRequestEntity;
 import org.apache.nifi.web.api.entity.VariableEntity;
 import org.apache.nifi.web.api.entity.VariableRegistryEntity;
 import org.apache.nifi.web.api.entity.VariableRegistryUpdateRequestEntity;
 import org.apache.nifi.web.api.entity.VerifyConfigRequestEntity;
+import org.apache.nifi.web.api.entity.VersionControlInformationEntity;
+import org.apache.nifi.web.api.entity.VersionedFlowUpdateRequestEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -94,6 +115,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -101,6 +123,7 @@ import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -129,9 +152,11 @@ public class NiFiClientUtil {
         return client;
     }
 
-    public void startProcessor(final ProcessorEntity currentEntity) throws NiFiClientException, IOException {
+    public ProcessorEntity startProcessor(final ProcessorEntity currentEntity) throws NiFiClientException, IOException, InterruptedException {
+        waitForValidationCompleted(currentEntity);
+
         currentEntity.setDisconnectedNodeAcknowledged(true);
-        getProcessorClient().startProcessor(currentEntity);
+        return getProcessorClient().startProcessor(currentEntity);
     }
 
     public void stopProcessor(final ProcessorEntity currentEntity) throws NiFiClientException, IOException, InterruptedException {
@@ -169,6 +194,74 @@ public class NiFiClientUtil {
         entity.setDisconnectedNodeAcknowledged(true);
 
         return getProcessorClient().createProcessor(processGroupId, entity);
+    }
+
+    public ParameterProviderEntity createParameterProvider(final String simpleTypeName) throws NiFiClientException, IOException {
+        return createParameterProvider(NiFiSystemIT.TEST_PARAM_PROVIDERS_PACKAGE + "." + simpleTypeName, NiFiSystemIT.NIFI_GROUP_ID, NiFiSystemIT.TEST_EXTENSIONS_ARTIFACT_ID, nifiVersion);
+    }
+
+    public ParameterProviderEntity createParameterProvider(final String type, final String bundleGroupId, final String artifactId, final String version)
+            throws NiFiClientException, IOException {
+        final ParameterProviderDTO dto = new ParameterProviderDTO();
+        dto.setType(type);
+
+        final BundleDTO bundle = new BundleDTO();
+        bundle.setGroup(bundleGroupId);
+        bundle.setArtifact(artifactId);
+        bundle.setVersion(version);
+        dto.setBundle(bundle);
+
+        final ParameterProviderEntity entity = new ParameterProviderEntity();
+        entity.setComponent(dto);
+        entity.setRevision(createNewRevision());
+
+        return nifiClient.getControllerClient().createParamProvider(entity);
+    }
+
+    public ParameterProviderEntity updateParameterProviderProperties(final ParameterProviderEntity currentEntity, final Map<String, String> properties) throws NiFiClientException, IOException {
+        final ParameterProviderDTO dto = new ParameterProviderDTO();
+        dto.setProperties(properties);
+        dto.setId(currentEntity.getId());
+
+        final ParameterProviderEntity updatedEntity = new ParameterProviderEntity();
+        updatedEntity.setRevision(currentEntity.getRevision());
+        updatedEntity.setComponent(dto);
+        updatedEntity.setId(currentEntity.getId());
+
+        return nifiClient.getParamProviderClient().updateParamProvider(updatedEntity);
+    }
+
+    public ParameterProviderEntity fetchParameters(final ParameterProviderEntity existingEntity) throws NiFiClientException, IOException {
+        ParameterProviderParameterFetchEntity parameterFetchEntity = new ParameterProviderParameterFetchEntity();
+        parameterFetchEntity.setId(existingEntity.getId());
+        parameterFetchEntity.setRevision(existingEntity.getRevision());
+
+        return nifiClient.getParamProviderClient().fetchParameters(parameterFetchEntity);
+    }
+
+    public ParameterProviderApplyParametersRequestEntity applyParameters(final ParameterProviderEntity existingEntity,
+                                                                         final Collection<ParameterGroupConfigurationEntity> parameterNameGroups) throws NiFiClientException, IOException {
+        final ParameterProviderParameterApplicationEntity parameterApplicationEntity = new ParameterProviderParameterApplicationEntity();
+        parameterApplicationEntity.setParameterGroupConfigurations(parameterNameGroups);
+        parameterApplicationEntity.setId(existingEntity.getId());
+        parameterApplicationEntity.setRevision(existingEntity.getRevision());
+
+        return nifiClient.getParamProviderClient().applyParameters(parameterApplicationEntity);
+    }
+
+    public void waitForParameterProviderApplicationRequestToComplete(final String providerId, final String requestId) throws NiFiClientException, IOException, InterruptedException {
+        while (true) {
+            final ParameterProviderApplyParametersRequestEntity entity = nifiClient.getParamProviderClient().getParamProviderApplyParametersRequest(providerId, requestId);
+            if (entity.getRequest().isComplete()) {
+                if (entity.getRequest().getFailureReason() == null) {
+                    return;
+                }
+
+                throw new RuntimeException("Parameter Provider Application failed: " + entity.getRequest().getFailureReason());
+            }
+
+            Thread.sleep(100L);
+        }
     }
 
     public ControllerServiceEntity createControllerService(final String simpleTypeName) throws NiFiClientException, IOException {
@@ -281,28 +374,61 @@ public class NiFiClientUtil {
         dto.setDescription(description);
         dto.setSensitive(sensitive);
         dto.setValue(value);
+        dto.setProvided(false);
 
         final ParameterEntity entity = new ParameterEntity();
         entity.setParameter(dto);
         return entity;
     }
 
+    public ParameterContextEntity getParameterContext(final String contextId) throws NiFiClientException, IOException {
+        return nifiClient.getParamContextClient().getParamContext(contextId, false);
+    }
+
     public ParameterContextEntity createParameterContextEntity(final String name, final String description, final Set<ParameterEntity> parameters) {
-        return createParameterContextEntity(name, description, parameters, Collections.emptyList());
+        return createParameterContextEntity(name, description, parameters, Collections.emptyList(), null);
     }
 
     public ParameterContextEntity createParameterContextEntity(final String name, final String description, final Set<ParameterEntity> parameters,
-                                                               final List<ParameterContextReferenceEntity> inheritedParameterContexts) {
+                                                               final List<String> inheritedParameterContextIds,
+                                                               final ParameterProviderConfiguration parameterProviderConfiguration) {
         final ParameterContextDTO contextDto = new ParameterContextDTO();
         contextDto.setName(name);
         contextDto.setDescription(description);
         contextDto.setParameters(parameters);
-        contextDto.setInheritedParameterContexts(inheritedParameterContexts);
+
+        final List<ParameterContextReferenceEntity> inheritedRefs = new ArrayList<>();
+        if (inheritedParameterContextIds != null) {
+            inheritedRefs.addAll(inheritedParameterContextIds.stream().map(id -> {
+                ParameterContextReferenceEntity ref = new ParameterContextReferenceEntity();
+                ref.setId(id);
+                ParameterContextReferenceDTO refDto = new ParameterContextReferenceDTO();
+                refDto.setId(id);
+                ref.setComponent(refDto);
+                return ref;
+            }).collect(Collectors.toList()));
+        }
+        contextDto.setInheritedParameterContexts(inheritedRefs);
+        contextDto.setParameterProviderConfiguration(createParamProviderConfigEntity(parameterProviderConfiguration));
 
         final ParameterContextEntity entity = new ParameterContextEntity();
         entity.setComponent(contextDto);
         entity.setRevision(createNewRevision());
 
+        return entity;
+    }
+
+    public ParameterProviderConfigurationEntity createParamProviderConfigEntity(final ParameterProviderConfiguration parameterProviderConfiguration) {
+        if (parameterProviderConfiguration == null) {
+            return null;
+        }
+
+        final ParameterProviderConfigurationEntity entity = new ParameterProviderConfigurationEntity();
+        entity.setId(parameterProviderConfiguration.getParameterProviderId());
+        entity.setComponent(new ParameterProviderConfigurationDTO());
+        entity.getComponent().setParameterProviderId(parameterProviderConfiguration.getParameterProviderId());
+        entity.getComponent().setParameterGroupName(parameterProviderConfiguration.getParameterGroupName());
+        entity.getComponent().setSynchronized(parameterProviderConfiguration.isSynchronized());
         return entity;
     }
 
@@ -347,10 +473,17 @@ public class NiFiClientUtil {
     }
 
     public ParameterContextEntity createParameterContext(final String contextName, final Map<String, String> parameters) throws NiFiClientException, IOException {
+        return this.createParameterContext(contextName, parameters, Collections.emptyList(), null);
+    }
+
+    public ParameterContextEntity createParameterContext(final String contextName, final Map<String, String> parameters, final List<String> inheritedParameterContextIds,
+                                                         final ParameterProviderConfiguration parameterProviderConfiguration) throws NiFiClientException, IOException {
         final Set<ParameterEntity> parameterEntities = new HashSet<>();
         parameters.forEach((paramName, paramValue) -> parameterEntities.add(createParameterEntity(paramName, null, false, paramValue)));
 
-        final ParameterContextEntity contextEntity = createParameterContextEntity(contextName, null, parameterEntities);
+        final ParameterContextEntity contextEntity = createParameterContextEntity(contextName, null, parameterEntities, inheritedParameterContextIds,
+                parameterProviderConfiguration);
+
         final ParameterContextEntity createdContextEntity = nifiClient.getParamContextClient().createParamContext(contextEntity);
         return createdContextEntity;
     }
@@ -361,11 +494,25 @@ public class NiFiClientUtil {
     }
 
     public ParameterContextUpdateRequestEntity updateParameterContext(final ParameterContextEntity existingEntity, final Map<String, String> parameters) throws NiFiClientException, IOException {
+        final ParameterContextDTO component = existingEntity.getComponent();
+        final List<String> inheritedParameterContextIds = component.getInheritedParameterContexts() == null ? null :
+                component.getInheritedParameterContexts().stream().map(ParameterContextReferenceEntity::getId).collect(Collectors.toList());
+        return this.updateParameterContext(existingEntity, parameters, inheritedParameterContextIds);
+    }
+
+    public ParameterContextUpdateRequestEntity updateParameterContext(final ParameterContextEntity existingEntity, final Map<String, String> parameters,
+                                                                      final List<String> inheritedParameterContextIds) throws NiFiClientException, IOException {
         final Set<ParameterEntity> parameterEntities = new HashSet<>();
         parameters.forEach((paramName, paramValue) -> parameterEntities.add(createParameterEntity(paramName, null, false, paramValue)));
         existingEntity.getComponent().setParameters(parameterEntities);
 
-        return nifiClient.getParamContextClient().updateParamContext(existingEntity);
+        final ParameterContextEntity entityUpdate = createParameterContextEntity(existingEntity.getComponent().getName(), existingEntity.getComponent().getDescription(),
+                parameterEntities, inheritedParameterContextIds, null);
+        entityUpdate.setId(existingEntity.getId());
+        entityUpdate.setRevision(existingEntity.getRevision());
+        entityUpdate.getComponent().setId(existingEntity.getComponent().getId());
+
+        return nifiClient.getParamContextClient().updateParamContext(entityUpdate);
     }
 
     public void waitForParameterContextRequestToComplete(final String contextId, final String requestId) throws NiFiClientException, IOException, InterruptedException {
@@ -475,6 +622,19 @@ public class NiFiClientUtil {
         }
     }
 
+    public void waitForValidationCompleted(final ProcessorEntity processorEntity) throws NiFiClientException, IOException, InterruptedException {
+        String validationStatus;
+        do {
+            final ProcessorEntity currentEntity = getProcessorClient().getProcessor(processorEntity.getId());
+            validationStatus = currentEntity.getComponent().getValidationStatus();
+
+            if (validationStatus.equals(ProcessorDTO.VALIDATING)) {
+                logger.debug("Waiting for Processor {} to finish validating...", processorEntity.getId());
+                Thread.sleep(100L);
+            }
+        } while (Objects.equals(validationStatus, ProcessorDTO.VALIDATING));
+    }
+
     public void waitForRunningProcessor(final String processorId) throws InterruptedException, IOException, NiFiClientException {
         waitForProcessorState(processorId, "RUNNING");
     }
@@ -550,6 +710,20 @@ public class NiFiClientUtil {
         return nifiClient.getControllerServicesClient().updateControllerService(entity);
     }
 
+    public ActivateControllerServicesEntity enableControllerServices(final String groupId, final boolean waitForEnabled) throws NiFiClientException, IOException {
+        final ActivateControllerServicesEntity activateControllerServicesEntity = new ActivateControllerServicesEntity();
+        activateControllerServicesEntity.setId(groupId);
+        activateControllerServicesEntity.setState(ActivateControllerServicesEntity.STATE_ENABLED);
+        activateControllerServicesEntity.setDisconnectedNodeAcknowledged(true);
+
+        final ActivateControllerServicesEntity activateControllerServices = nifiClient.getFlowClient().activateControllerServices(activateControllerServicesEntity);
+        if (waitForEnabled) {
+            waitForControllerSerivcesEnabled(groupId);
+        }
+
+        return activateControllerServices;
+    }
+
     public ControllerServiceEntity enableControllerService(final ControllerServiceEntity entity) throws NiFiClientException, IOException {
         final ControllerServiceRunStatusEntity runStatusEntity = new ControllerServiceRunStatusEntity();
         runStatusEntity.setState("ENABLED");
@@ -592,7 +766,9 @@ public class NiFiClientUtil {
         return counterValues;
     }
 
-    public ScheduleComponentsEntity startProcessGroupComponents(final String groupId) throws NiFiClientException, IOException {
+    public ScheduleComponentsEntity startProcessGroupComponents(final String groupId) throws NiFiClientException, IOException, InterruptedException {
+        waitForAllProcessorValidationToComplete(groupId);
+
         final ScheduleComponentsEntity scheduleComponentsEntity = new ScheduleComponentsEntity();
         scheduleComponentsEntity.setId(groupId);
         scheduleComponentsEntity.setState("RUNNING");
@@ -600,6 +776,30 @@ public class NiFiClientUtil {
         final ScheduleComponentsEntity scheduleEntity = nifiClient.getFlowClient().scheduleProcessGroupComponents(groupId, scheduleComponentsEntity);
 
         return scheduleEntity;
+    }
+
+    private void waitForAllProcessorValidationToComplete(final String groupId) throws NiFiClientException, IOException, InterruptedException {
+        final Set<ProcessorEntity> processors = findAllProcessors(groupId);
+
+        for (final ProcessorEntity processor : processors) {
+            waitForValidationCompleted(processor);
+        }
+    }
+
+    private Set<ProcessorEntity> findAllProcessors(final String groupId) throws NiFiClientException, IOException {
+        final Set<ProcessorEntity> processors = new HashSet<>();
+        findAllProcessors(groupId, processors);
+        return processors;
+    }
+
+    private void findAllProcessors(final String groupId, final Set<ProcessorEntity> allProcessors) throws NiFiClientException, IOException {
+        final ProcessGroupFlowEntity flowEntity = nifiClient.getFlowClient().getProcessGroup(groupId);
+        final FlowDTO flowDto = flowEntity.getProcessGroupFlow().getFlow();
+        allProcessors.addAll(flowDto.getProcessors());
+
+        for (final ProcessGroupEntity childGroup : flowDto.getProcessGroups()) {
+            findAllProcessors(childGroup.getId(), allProcessors);
+        }
     }
 
     public ScheduleComponentsEntity stopProcessGroupComponents(final String groupId) throws NiFiClientException, IOException {
@@ -708,13 +908,13 @@ public class NiFiClientUtil {
     public void waitForControllerServiceRunStatus(final String id, final String requestedRunStatus) throws NiFiClientException, IOException {
         while (true) {
             final ControllerServiceEntity serviceEntity = nifiClient.getControllerServicesClient().getControllerService(id);
-            final String runStatus = serviceEntity.getStatus().getRunStatus();
-            if (requestedRunStatus.equals(runStatus)) {
-                logger.info("Controller Service [{}] run status [{}] found", id, runStatus);
+            final String serviceState = serviceEntity.getComponent().getState();
+            if (requestedRunStatus.equals(serviceState)) {
+                logger.info("Controller Service [{}] run status [{}] found", id, serviceState);
                 break;
             }
 
-            logger.info("Controller Service [{}] run status [{}] not matched [{}]: sleeping before retrying", id, runStatus, requestedRunStatus);
+            logger.info("Controller Service [{}] run status [{}] not matched [{}]: sleeping before retrying", id, serviceState, requestedRunStatus);
 
             try {
                 Thread.sleep(500L);
@@ -730,6 +930,10 @@ public class NiFiClientUtil {
 
     public void waitForControllerSerivcesEnabled(final String groupId, final String... serviceIdsOfInterest) throws NiFiClientException, IOException {
         waitForControllerServiceState(groupId, "ENABLED", Arrays.asList(serviceIdsOfInterest));
+    }
+
+    public void waitForControllerSerivcesEnabled(final String groupId, final List<String> serviceIdsOfInterest) throws NiFiClientException, IOException {
+        waitForControllerServiceState(groupId, "ENABLED", serviceIdsOfInterest);
     }
 
     public void waitForControllerServiceState(final String groupId, final String desiredState, final Collection<String> serviceIdsOfInterest) throws NiFiClientException, IOException {
@@ -755,7 +959,7 @@ public class NiFiClientUtil {
     public void waitForControllerServiceValidationStatus(final String controllerServiceId, final String validationStatus) throws NiFiClientException, IOException {
         while (true) {
             final ControllerServiceEntity controllerServiceEntity = nifiClient.getControllerServicesClient().getControllerService(controllerServiceId);
-            final String currentValidationStatus = controllerServiceEntity.getStatus().getValidationStatus();
+            final String currentValidationStatus = controllerServiceEntity.getComponent().getValidationStatus();
             if (validationStatus.equals(currentValidationStatus)) {
                 logger.info("Controller Service ID [{}] Type [{}] Validation Status [{}] matched", controllerServiceId,
                         controllerServiceEntity.getComponent().getType(), validationStatus);
@@ -799,7 +1003,7 @@ public class NiFiClientUtil {
 
         return servicesEntity.getControllerServices().stream()
             .filter(svc -> serviceIds == null || serviceIds.isEmpty() || serviceIds.contains(svc.getId()))
-            .filter(svc -> !desiredState.equals(svc.getStatus().getRunStatus()))
+            .filter(svc -> !desiredState.equalsIgnoreCase(svc.getComponent().getState()))
             .collect(Collectors.toList());
     }
 
@@ -1154,6 +1358,27 @@ public class NiFiClientUtil {
         return updateRequestEntity;
     }
 
+    public List<ConfigVerificationResultDTO> verifyParameterProviderConfig(final String taskId, final Map<String, String> properties)
+            throws InterruptedException, IOException,NiFiClientException {
+
+        final VerifyConfigRequestDTO requestDto = new VerifyConfigRequestDTO();
+        requestDto.setComponentId(taskId);
+        requestDto.setProperties(properties);
+
+        final VerifyConfigRequestEntity verificationRequest = new VerifyConfigRequestEntity();
+        verificationRequest.setRequest(requestDto);
+
+        VerifyConfigRequestEntity results = nifiClient.getParamProviderClient().submitConfigVerificationRequest(verificationRequest);
+        while (!results.getRequest().isComplete()) {
+            Thread.sleep(50L);
+            results = nifiClient.getParamProviderClient().getConfigVerificationRequest(taskId, results.getRequest().getRequestId());
+        }
+
+        nifiClient.getParamProviderClient().deleteConfigVerificationRequest(taskId, results.getRequest().getRequestId());
+
+        return results.getRequest().getResults();
+    }
+
     public ProcessGroupEntity createProcessGroup(final String name, final String parentGroupId) throws NiFiClientException, IOException {
         final ProcessGroupDTO component = new ProcessGroupDTO();
         component.setName(name);
@@ -1340,4 +1565,108 @@ public class NiFiClientUtil {
         return nifiClient.getReportingTasksClient().updateReportingTask(entity);
     }
 
+    public FlowRegistryClientEntity createFlowRegistryClient(final String name) throws NiFiClientException, IOException {
+        final BundleDTO bundleDto = new BundleDTO(NiFiSystemIT.NIFI_GROUP_ID, NiFiSystemIT.TEST_EXTENSIONS_ARTIFACT_ID, nifiVersion);
+        final FlowRegistryClientDTO clientDto = new FlowRegistryClientDTO();
+        clientDto.setBundle(bundleDto);
+        clientDto.setName(name);
+        clientDto.setType("org.apache.nifi.flow.registry.FileSystemFlowRegistryClient");
+
+        final FlowRegistryClientEntity clientEntity = new FlowRegistryClientEntity();
+        clientEntity.setComponent(clientDto);
+        clientEntity.setRevision(createNewRevision());
+
+        return nifiClient.getControllerClient().createRegistryClient(clientEntity);
+    }
+
+    public FlowRegistryClientEntity updateRegistryClientProperties(final FlowRegistryClientEntity currentEntity, final Map<String, String> properties) throws NiFiClientException, IOException {
+        final FlowRegistryClientDTO updateDto = new FlowRegistryClientDTO();
+        updateDto.setProperties(properties);
+        updateDto.setId(currentEntity.getId());
+
+        final FlowRegistryClientEntity updateEntity = new FlowRegistryClientEntity();
+        updateEntity.setRevision(currentEntity.getRevision());
+        updateEntity.setId(currentEntity.getId());
+        updateEntity.setComponent(updateDto);
+
+        return nifiClient.getControllerClient().updateRegistryClient(updateEntity);
+    }
+
+    public VersionControlInformationEntity startVersionControl(final ProcessGroupEntity group, final FlowRegistryClientEntity registryClient, final String bucketId, final String flowName)
+            throws NiFiClientException, IOException{
+
+        final VersionedFlowDTO versionedFlowDto = new VersionedFlowDTO();
+        versionedFlowDto.setBucketId(bucketId);
+        versionedFlowDto.setFlowName(flowName);
+        versionedFlowDto.setRegistryId(registryClient.getId());
+        versionedFlowDto.setAction(VersionedFlowDTO.COMMIT_ACTION);
+
+        final StartVersionControlRequestEntity requestEntity = new StartVersionControlRequestEntity();
+        requestEntity.setProcessGroupRevision(group.getRevision());
+        requestEntity.setVersionedFlow(versionedFlowDto);
+
+        return nifiClient.getVersionsClient().startVersionControl(group.getId(), requestEntity);
+    }
+
+    public VersionedFlowUpdateRequestEntity revertChanges(final ProcessGroupEntity group) throws NiFiClientException, IOException, InterruptedException {
+        final VersionControlInformationEntity vciEntity = nifiClient.getVersionsClient().getVersionControlInfo(group.getId());
+        final VersionedFlowUpdateRequestEntity revertRequest = nifiClient.getVersionsClient().initiateRevertFlowVersion(group.getId(), vciEntity);
+        return waitForFlowRevertCompleted(revertRequest.getRequest().getRequestId());
+    }
+
+    private VersionedFlowUpdateRequestEntity waitForFlowRevertCompleted(final String requestId) throws NiFiClientException, IOException, InterruptedException {
+        final VersionsClient versionsClient = nifiClient.getVersionsClient();
+
+        while(true) {
+            final VersionedFlowUpdateRequestEntity entity = versionsClient.getRevertFlowVersionRequest(requestId);
+
+            if (entity.getRequest().isComplete()) {
+                return entity;
+            }
+
+            Thread.sleep(100L);
+        }
+    }
+
+    public ProcessGroupEntity importFlowFromRegistry(final String parentGroupId, final VersionControlInformationDTO vciDto)
+        throws NiFiClientException, IOException {
+        return importFlowFromRegistry(parentGroupId, vciDto.getRegistryId(), vciDto.getBucketId(), vciDto.getFlowId(), vciDto.getVersion());
+    }
+
+    public ProcessGroupEntity importFlowFromRegistry(final String parentGroupId, final String registryClientId, final String bucketId, final String flowId, final int version)
+                throws NiFiClientException, IOException {
+
+        final VersionControlInformationDTO vci = new VersionControlInformationDTO();
+        vci.setBucketId(bucketId);
+        vci.setFlowId(flowId);
+        vci.setVersion(version);
+        vci.setRegistryId(registryClientId);
+
+        final ProcessGroupDTO processGroupDto = new ProcessGroupDTO();
+        processGroupDto.setVersionControlInformation(vci);
+
+        final ProcessGroupEntity groupEntity = new ProcessGroupEntity();
+        groupEntity.setComponent(processGroupDto);
+        groupEntity.setRevision(createNewRevision());
+
+        return nifiClient.getProcessGroupClient().createProcessGroup(parentGroupId, groupEntity);
+    }
+
+    public FlowEntity copyAndPaste(final ProcessGroupEntity pgEntity, final String destinationGroupId) throws NiFiClientException, IOException {
+        final SnippetDTO snippetDto = new SnippetDTO();
+        snippetDto.setProcessGroups(Collections.singletonMap(pgEntity.getId(), pgEntity.getRevision()));
+        snippetDto.setParentGroupId(pgEntity.getComponent().getParentGroupId());
+
+        final SnippetEntity snippetEntity = new SnippetEntity();
+        snippetEntity.setSnippet(snippetDto);
+
+        final SnippetEntity createdSnippetEntity = nifiClient.getSnippetClient().createSnippet(snippetEntity);
+
+        final CopySnippetRequestEntity requestEntity = new CopySnippetRequestEntity();
+        requestEntity.setOriginX(0D);
+        requestEntity.setOriginY(0D);
+        requestEntity.setSnippetId(createdSnippetEntity.getSnippet().getId());
+
+        return nifiClient.getProcessGroupClient().copySnippet(destinationGroupId, requestEntity);
+    }
 }

@@ -18,18 +18,19 @@ package org.apache.nifi.controller.repository.io;
 
 import org.apache.nifi.controller.repository.ContentRepository;
 import org.apache.nifi.controller.repository.claim.ContentClaim;
+import org.apache.nifi.controller.repository.metrics.NopPerformanceTracker;
 import org.apache.nifi.stream.io.StreamUtils;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
 public class TestContentClaimInputStream {
@@ -38,7 +39,7 @@ public class TestContentClaimInputStream {
     private ContentClaim contentClaim;
     private AtomicBoolean closed = new AtomicBoolean();
 
-    @Before
+    @BeforeEach
     public void setup() throws IOException {
         repo = mock(ContentRepository.class);
         contentClaim = mock(ContentClaim.class);
@@ -56,7 +57,7 @@ public class TestContentClaimInputStream {
 
     @Test
     public void testStreamCreatedFromRepository() throws IOException {
-        final ContentClaimInputStream in = new ContentClaimInputStream(repo, contentClaim, 0L);
+        final ContentClaimInputStream in = new ContentClaimInputStream(repo, contentClaim, 0L, new NopPerformanceTracker());
 
         final byte[] buff = new byte[5];
         StreamUtils.fillBuffer(in, buff);
@@ -78,7 +79,7 @@ public class TestContentClaimInputStream {
 
     @Test
     public void testThatContentIsSkipped() throws IOException {
-        final ContentClaimInputStream in = new ContentClaimInputStream(repo, contentClaim, 3L);
+        final ContentClaimInputStream in = new ContentClaimInputStream(repo, contentClaim, 3L, new NopPerformanceTracker());
 
         final byte[] buff = new byte[2];
         StreamUtils.fillBuffer(in, buff);
@@ -100,7 +101,7 @@ public class TestContentClaimInputStream {
 
     @Test
     public void testRereadEntireClaim() throws IOException {
-        final ContentClaimInputStream in = new ContentClaimInputStream(repo, contentClaim, 0L);
+        final ContentClaimInputStream in = new ContentClaimInputStream(repo, contentClaim, 0L, new NopPerformanceTracker());
 
         final byte[] buff = new byte[5];
 
@@ -131,7 +132,7 @@ public class TestContentClaimInputStream {
 
     @Test
     public void testMultipleResetCallsAfterMark() throws IOException {
-        final ContentClaimInputStream in = new ContentClaimInputStream(repo, contentClaim, 0L);
+        final ContentClaimInputStream in = new ContentClaimInputStream(repo, contentClaim, 0L, new NopPerformanceTracker());
 
         final byte[] buff = new byte[5];
 
@@ -162,7 +163,7 @@ public class TestContentClaimInputStream {
 
     @Test
     public void testRereadWithOffset() throws IOException {
-        final ContentClaimInputStream in = new ContentClaimInputStream(repo, contentClaim, 3L);
+        final ContentClaimInputStream in = new ContentClaimInputStream(repo, contentClaim, 3L, new NopPerformanceTracker());
 
         final byte[] buff = new byte[2];
 

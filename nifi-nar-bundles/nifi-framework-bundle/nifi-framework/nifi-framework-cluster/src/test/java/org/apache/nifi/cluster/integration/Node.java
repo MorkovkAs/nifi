@@ -56,16 +56,15 @@ import org.apache.nifi.nar.ExtensionDiscoveringManager;
 import org.apache.nifi.nar.ExtensionManager;
 import org.apache.nifi.nar.SystemBundle;
 import org.apache.nifi.registry.VariableRegistry;
-import org.apache.nifi.registry.flow.FlowRegistryClient;
 import org.apache.nifi.reporting.BulletinRepository;
 import org.apache.nifi.reporting.Severity;
 import org.apache.nifi.util.NiFiProperties;
 import org.apache.nifi.web.revision.RevisionManager;
 import org.apache.nifi.web.revision.RevisionSnapshot;
-import org.junit.Assert;
 import org.mockito.Mockito;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.util.ArrayList;
@@ -76,6 +75,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class Node {
     private final NodeIdentifier nodeId;
@@ -160,8 +161,7 @@ public class Node {
         final HeartbeatMonitor heartbeatMonitor = createHeartbeatMonitor();
         flowController = FlowController.createClusteredInstance(Mockito.mock(FlowFileEventRepository.class), nodeProperties,
             null, null, PropertyEncryptorFactory.getPropertyEncryptor(nodeProperties), protocolSender, Mockito.mock(BulletinRepository.class), clusterCoordinator,
-            heartbeatMonitor, electionManager, VariableRegistry.EMPTY_REGISTRY, Mockito.mock(FlowRegistryClient.class), extensionManager,
-            revisionManager, statusHistoryRepository);
+            heartbeatMonitor, electionManager, VariableRegistry.EMPTY_REGISTRY, extensionManager, revisionManager, statusHistoryRepository);
 
         try {
             flowController.initializeFlow();
@@ -301,8 +301,7 @@ public class Node {
             return new NodeClusterCoordinator(protocolSenderListener, eventReporter, electionManager, flowElection, null,
                     revisionManager, nodeProperties, extensionManager, protocolSender);
         } catch (IOException e) {
-            Assert.fail(e.toString());
-            return null;
+            throw new UncheckedIOException(e);
         }
     }
 
@@ -384,7 +383,7 @@ public class Node {
      * @param nodeId id of the node
      */
     public void assertNodeIsConnected(final NodeIdentifier nodeId) {
-        Assert.assertEquals(NodeConnectionState.CONNECTED, getClusterCoordinator().getConnectionStatus(nodeId).getState());
+        assertEquals(NodeConnectionState.CONNECTED, getClusterCoordinator().getConnectionStatus(nodeId).getState());
     }
 
     /**

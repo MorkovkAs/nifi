@@ -24,15 +24,15 @@ import org.apache.nifi.serialization.record.RecordFieldType;
 import org.apache.nifi.util.MockFlowFile;
 import org.apache.nifi.util.TestRunner;
 import org.apache.nifi.util.TestRunners;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.stream.IntStream;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class TestPartitionRecord {
 
@@ -40,7 +40,7 @@ public class TestPartitionRecord {
     private MockRecordParser readerService;
     private MockRecordWriter writerService;
 
-    @Before
+    @BeforeEach
     public void setup() throws InitializationException {
         readerService = new MockRecordParser();
         writerService = new MockRecordWriter(null, false);
@@ -83,7 +83,7 @@ public class TestPartitionRecord {
         assertEquals(1L, out.stream().filter(ff -> ff.getAttribute("record.count").equals("2")).count());
         out.forEach(ff -> ff.assertAttributeEquals("fragment.count", "4"));
         IntStream.of(1, 3).forEach((i) -> out.get(i).assertAttributeEquals("fragment.id", out.get(0).getAttribute("fragment.id")));
-        IntStream.of(0, 3).forEach((i) -> out.get(i).assertAttributeEquals("fragment.index", String.valueOf(i)));
+        IntStream.of(0, 3).forEach((i) -> assertEquals(1L, out.stream().filter(ff -> ff.getAttribute("fragment.index").equals(String.valueOf(i))).count()));
 
         out.stream().filter(ff -> ff.getAttribute("record.count").equals("2")).forEach(ff -> ff.assertContentEquals("Jake,49,\nJake,14,\n"));
 

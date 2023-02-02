@@ -16,18 +16,6 @@
  */
 package org.apache.nifi.processors.standard;
 
-import static org.apache.nifi.flowfile.attributes.FragmentAttributes.FRAGMENT_COUNT;
-import static org.apache.nifi.flowfile.attributes.FragmentAttributes.FRAGMENT_ID;
-import static org.apache.nifi.flowfile.attributes.FragmentAttributes.FRAGMENT_INDEX;
-import static org.apache.nifi.flowfile.attributes.FragmentAttributes.SEGMENT_ORIGINAL_FILENAME;
-
-import java.io.BufferedOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.HashMap;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.flowfile.attributes.CoreAttributes;
 import org.apache.nifi.processor.ProcessSession;
@@ -36,20 +24,32 @@ import org.apache.nifi.processor.io.OutputStreamCallback;
 import org.apache.nifi.util.MockFlowFile;
 import org.apache.nifi.util.TestRunner;
 import org.apache.nifi.util.TestRunners;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import java.io.BufferedOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Collections;
+import java.util.HashMap;
+
+import static org.apache.nifi.flowfile.attributes.FragmentAttributes.FRAGMENT_COUNT;
+import static org.apache.nifi.flowfile.attributes.FragmentAttributes.FRAGMENT_ID;
+import static org.apache.nifi.flowfile.attributes.FragmentAttributes.FRAGMENT_INDEX;
+import static org.apache.nifi.flowfile.attributes.FragmentAttributes.SEGMENT_ORIGINAL_FILENAME;
 
 public class TestSplitJson {
 
     private static final Path JSON_SNIPPET = Paths.get("src/test/resources/TestJson/json-sample.json");
     private static final Path XML_SNIPPET = Paths.get("src/test/resources/TestXml/xml-snippet.xml");
 
-    @Test(expected = AssertionError.class)
+    @Test
     public void testInvalidJsonPath() {
         final TestRunner testRunner = TestRunners.newTestRunner(new SplitJson());
         testRunner.setProperty(SplitJson.ARRAY_JSON_PATH_EXPRESSION, "$..");
-
-        Assert.fail("An improper JsonPath expression was not detected as being invalid.");
+        testRunner.assertNotValid();
     }
 
     @Test
@@ -114,6 +114,39 @@ public class TestSplitJson {
     }
 
     @Test
+    public void testSplit_change_jsonpath() throws Exception {
+        final TestRunner testRunner = TestRunners.newTestRunner(new SplitJson());
+        testRunner.setProperty(SplitJson.ARRAY_JSON_PATH_EXPRESSION, "$[0].range");
+
+        testRunner.enqueue(JSON_SNIPPET);
+        testRunner.run();
+
+        int numSplitsExpected = 10;
+
+        testRunner.assertTransferCount(SplitJson.REL_ORIGINAL, 1);
+        testRunner.getFlowFilesForRelationship(SplitJson.REL_ORIGINAL).get(0).assertAttributeEquals(FRAGMENT_COUNT.key(), String.valueOf(numSplitsExpected));
+        testRunner.assertTransferCount(SplitJson.REL_SPLIT, numSplitsExpected);
+        final MockFlowFile originalOut = testRunner.getFlowFilesForRelationship(SplitJson.REL_ORIGINAL).get(0);
+        originalOut.assertContentEquals(JSON_SNIPPET);
+
+        // Change JsonPath Expression, verify it is being applied correctly
+        testRunner.clearTransferState();
+        testRunner.setProperty(SplitJson.ARRAY_JSON_PATH_EXPRESSION, "$[*].name");
+
+        testRunner.enqueue(JSON_SNIPPET, Collections.singletonMap(CoreAttributes.FILENAME.key(), "test.json"));
+        testRunner.run();
+
+        testRunner.assertTransferCount(SplitJson.REL_ORIGINAL, 1);
+        final MockFlowFile originalFlowFile = testRunner.getFlowFilesForRelationship(SplitJson.REL_ORIGINAL).get(0);
+        originalFlowFile.assertAttributeExists(FRAGMENT_ID.key());
+        originalFlowFile.assertAttributeEquals(FRAGMENT_COUNT.key(), "7");
+        originalFlowFile.assertContentEquals(JSON_SNIPPET);
+        testRunner.assertTransferCount(SplitJson.REL_SPLIT, 7);
+        MockFlowFile flowFile = testRunner.getFlowFilesForRelationship(SplitJson.REL_SPLIT).get(0);
+        flowFile.assertContentEquals("{\"first\":\"Shaffer\",\"last\":\"Pearson\"}");
+    }
+
+    @Test
     public void testSplit_arrayResult_nonScalarValues() throws Exception {
         final TestRunner testRunner = TestRunners.newTestRunner(new SplitJson());
         testRunner.setProperty(SplitJson.ARRAY_JSON_PATH_EXPRESSION, "$[*].name");
@@ -156,7 +189,7 @@ public class TestSplitJson {
     }
 
     @Test
-    public void testSplit_pathToNullValue() throws Exception {
+    public void testSplit_pathToNullValue() {
         final TestRunner testRunner = TestRunners.newTestRunner(new SplitJson());
         testRunner.setProperty(SplitJson.ARRAY_JSON_PATH_EXPRESSION, "$.nullField");
 
@@ -179,7 +212,7 @@ public class TestSplitJson {
     }
 
     @Test
-    public void testSplit_pathToArrayWithNulls_emptyStringRepresentation() throws Exception {
+    public void testSplit_pathToArrayWithNulls_emptyStringRepresentation() {
         final TestRunner testRunner = TestRunners.newTestRunner(new SplitJson());
         testRunner.setProperty(SplitJson.ARRAY_JSON_PATH_EXPRESSION, "$.arrayOfNulls");
 
@@ -207,7 +240,7 @@ public class TestSplitJson {
     }
 
     @Test
-    public void testSplit_pathToArrayWithNulls_nullStringRepresentation() throws Exception {
+    public void testSplit_pathToArrayWithNulls_nullStringRepresentation() {
         final TestRunner testRunner = TestRunners.newTestRunner(new SplitJson());
         testRunner.setProperty(SplitJson.ARRAY_JSON_PATH_EXPRESSION, "$.arrayOfNulls");
         testRunner.setProperty(SplitJson.NULL_VALUE_DEFAULT_REPRESENTATION,
@@ -237,7 +270,7 @@ public class TestSplitJson {
     }
 
     @Test
-    public void testSplit_pathToInputStringNullValue() throws Exception {
+    public void testSplit_pathToInputStringNullValue() {
         final TestRunner testRunner = TestRunners.newTestRunner(new SplitJson());
         testRunner.setProperty(SplitJson.ARRAY_JSON_PATH_EXPRESSION, "$.*");
         ProcessSession session = testRunner.getProcessSessionFactory().createSession();

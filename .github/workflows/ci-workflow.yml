@@ -25,16 +25,45 @@ env:
     -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN
     -Dhttp.keepAlive=false
     -Dmaven.wagon.http.pool=false
-  MAVEN_COMMAND: >-
-    mvn package verify
-    -V
+  COMPILE_MAVEN_OPTS: >-
+    -Xmx3g
+    -Dhttp.keepAlive=false
+    -Dmaven.wagon.http.pool=false
+  MAVEN_COMPILE_COMMAND: >-
+    mvn test-compile
+    --threads 2C
+    --show-version
+    --no-snapshot-updates
+    --no-transfer-progress
+    --fail-fast
+    -pl -:minifi-c2-integration-tests
+    -pl -:minifi-integration-tests
+    -pl -:minifi-assembly
+    -pl -:nifi-assembly
+    -pl -:nifi-kafka-connector-assembly
+    -pl -:nifi-kafka-connector-tests
+    -pl -:nifi-toolkit-encrypt-config
+    -pl -:nifi-toolkit-admin
+    -pl -:nifi-toolkit-tls
+    -pl -:nifi-toolkit-assembly
+    -pl -:nifi-registry-assembly
+    -pl -:nifi-registry-toolkit-assembly
+    -pl -:nifi-runtime-manifest
+    -pl -:nifi-runtime-manifest-test
+    -pl -:nifi-stateless-assembly
+    -pl -:nifi-stateless-processor-tests
+    -pl -:nifi-stateless-system-test-suite
+    -pl -:nifi-system-test-suite
+    -pl -:nifi-nar-provider-assembly
+  MAVEN_VERIFY_COMMAND: >-
+    mvn verify
+    --show-version
+    --no-snapshot-updates
+    --no-transfer-progress
+    --fail-fast
     -D dir-only
     -D disableXmlReport
-    -nsu
-    -ntp
-    -ff
-  MAVEN_PROFILES: >-
-    -P contrib-check
+  MAVEN_BUILD_PROFILES: >-
     -P include-grpc
     -P skip-nifi-bin-assembly
   MAVEN_PROJECTS: >-
@@ -50,7 +79,38 @@ concurrency:
   group: ${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
+  static-analysis:
+    timeout-minutes: 30
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+      - name: Cache Maven Modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.m2/repository
+          # Cache Maven modules using a cache key different from setup-java steps
+          key: ${{ runner.os }}-maven-static-analysis-${{ hashFiles('**/pom.xml') }}
+      - name: Set up Java 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      - name: Maven Build
+        run: >
+          mvn validate
+          --no-snapshot-updates
+          --no-transfer-progress
+          --fail-fast
+          -P contrib-check
+          -P include-grpc
+
   ubuntu-build-en:
     timeout-minutes: 120
     runs-on: ubuntu-latest
@@ -63,30 +123,27 @@ jobs:
           cat /proc/meminfo
           df
       - name: Checkout Code
-        uses: actions/checkout@v2
-      - name: Cache Maven Dependencies
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
+        uses: actions/checkout@v3
       - name: Cache Node Modules
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.npm
             **/node_modules
-          key: ${{ runner.os }}-npm16-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm16-
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
       - name: Set up Java 17
-        uses: actions/setup-java@v2
+        uses: actions/setup-java@v3
         with:
           distribution: 'zulu'
           java-version: '17'
-      - name: Maven Build
+          cache: 'maven'
+      - name: Maven Compile
+        env:
+          MAVEN_OPTS: >-
+            ${{ env.COMPILE_MAVEN_OPTS }}
+        run: >
+          ${{ env.MAVEN_COMPILE_COMMAND }}
+      - name: Maven Verify
         env:
           NIFI_CI_LOCALE: >-
             -Duser.language=en
@@ -100,11 +157,11 @@ jobs:
             ${{ env.DEFAULT_MAVEN_OPTS }}
             -DargLine=${env.SUREFIRE_OPTS}
         run: >
-          ${{ env.MAVEN_COMMAND }}
-          ${{ env.MAVEN_PROFILES }}
+          ${{ env.MAVEN_VERIFY_COMMAND }}
+          ${{ env.MAVEN_BUILD_PROFILES }}
           ${{ env.MAVEN_PROJECTS }}
       - name: Upload Test Reports
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: surefire-reports-ubuntu-17
           path: |
@@ -127,30 +184,27 @@ jobs:
           cat /proc/meminfo
           df
       - name: Checkout Code
-        uses: actions/checkout@v2
-      - name: Cache Maven Dependencies
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
+        uses: actions/checkout@v3
       - name: Cache Node Modules
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.npm
             **/node_modules
-          key: ${{ runner.os }}-npm16-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm16-
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
       - name: Set up Java 11
-        uses: actions/setup-java@v2
+        uses: actions/setup-java@v3
         with:
           distribution: 'zulu'
           java-version: '11'
-      - name: Maven Build
+          cache: 'maven'
+      - name: Maven Compile
+        env:
+          MAVEN_OPTS: >-
+            ${{ env.COMPILE_MAVEN_OPTS }}
+        run: >
+          ${{ env.MAVEN_COMPILE_COMMAND }}
+      - name: Maven Verify
         env:
           NIFI_CI_LOCALE: >-
             -Duser.language=hi
@@ -164,11 +218,11 @@ jobs:
             ${{ env.DEFAULT_MAVEN_OPTS }}
             -DargLine=${env.SUREFIRE_OPTS}
         run: >
-          ${{ env.MAVEN_COMMAND }}
-          ${{ env.MAVEN_PROFILES }}
+          ${{ env.MAVEN_VERIFY_COMMAND }}
+          ${{ env.MAVEN_BUILD_PROFILES }}
           ${{ env.MAVEN_PROJECTS }}
       - name: Upload Test Reports
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: surefire-reports-ubuntu-en
           path: |
@@ -182,7 +236,7 @@ jobs:
   macos-build-jp:
     timeout-minutes: 120
     runs-on: macos-latest
-    name: MacOS Adopt JDK 8 JP
+    name: MacOS Temurin JDK 8 JP
     steps:
       - name: System Information
         run: |
@@ -191,30 +245,27 @@ jobs:
           sysctl machdep.cpu
           df
       - name: Checkout Code
-        uses: actions/checkout@v2
-      - name: Cache Maven Dependencies
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
+        uses: actions/checkout@v3
       - name: Cache Node Modules
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
             ~/.npm
             **/node_modules
-          key: ${{ runner.os }}-npm16-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm16-
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
       - name: Set up Java 8
-        uses: actions/setup-java@v2
+        uses: actions/setup-java@v3
         with:
-          distribution: 'adopt'
+          distribution: 'temurin'
           java-version: '8'
-      - name: Maven Build
+          cache: 'maven'
+      - name: Maven Compile
+        env:
+          MAVEN_OPTS: >-
+            ${{ env.COMPILE_MAVEN_OPTS }}
+        run: >
+          ${{ env.MAVEN_COMPILE_COMMAND }}
+      - name: Maven Verify
         env:
           NIFI_CI_LOCALE: >-
             -Duser.language=ja
@@ -228,11 +279,11 @@ jobs:
             ${{ env.DEFAULT_MAVEN_OPTS }}
             -DargLine=${env.SUREFIRE_OPTS}
         run: >-
-          ${{ env.MAVEN_COMMAND }}
-          ${{ env.MAVEN_PROFILES }}
+          ${{ env.MAVEN_VERIFY_COMMAND }}
+          ${{ env.MAVEN_BUILD_PROFILES }}
           ${{ env.MAVEN_PROJECTS }}
       - name: Upload Test Reports
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: surefire-reports-macos-jp
           path: |
@@ -257,34 +308,27 @@ jobs:
           git config --global core.autocrlf false
           git config --global core.longpaths true
       - name: Checkout Code
-        uses: actions/checkout@v2
-      - name: Cache Maven Dependencies
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
-      - name: Get NPM Cache Directory
-        id: npm-cache-directory
-        run: |
-          echo "::set-output name=directory::$(npm config get cache)"
+        uses: actions/checkout@v3
       - name: Cache Node Modules
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: |
-            ${{ steps.npm-cache-directory.outputs.directory }}
-            **/node_modules
-          key: ${{ runner.os }}-npm16-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm16-
+            ~\AppData\npm-cache
+            **\node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
       - name: Set up Java 8
-        uses: actions/setup-java@v2
+        uses: actions/setup-java@v3
         with:
           distribution: 'zulu'
           java-version: '8'
-      - name: Maven Build
+          cache: 'maven'
+      - name: Maven Compile
+        env:
+          MAVEN_OPTS: >-
+            ${{ env.COMPILE_MAVEN_OPTS }}
+        run: >
+          ${{ env.MAVEN_COMPILE_COMMAND }}
+      - name: Maven Verify
         env:
           NIFI_CI_LOCALE: >-
             -Duser.language=fr
@@ -298,10 +342,11 @@ jobs:
             ${{ env.DEFAULT_MAVEN_OPTS }}
             -DargLine=${env.SUREFIRE_OPTS}
         run: >-
-          ${{ env.MAVEN_COMMAND }}
+          ${{ env.MAVEN_VERIFY_COMMAND }}
+          ${{ env.MAVEN_BUILD_PROFILES }}
           ${{ env.MAVEN_PROJECTS }}
       - name: Upload Test Reports
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: surefire-reports-windows-fr
           path: |

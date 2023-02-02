@@ -18,7 +18,7 @@
     <parent>
         <groupId>org.apache.nifi</groupId>
         <artifactId>nifi</artifactId>
-        <version>1.17.0-SNAPSHOT</version>
+        <version>1.20.0-SNAPSHOT</version>
     </parent>
     <artifactId>nifi-nar-bundles</artifactId>
     <packaging>pom</packaging>
@@ -48,6 +48,7 @@
         <module>nifi-flume-bundle</module>
         <module>nifi-hbase-bundle</module>
         <module>nifi-ambari-bundle</module>
+        <module>nifi-asana-bundle</module>
         <module>nifi-media-bundle</module>
         <module>nifi-avro-bundle</module>
         <module>nifi-couchbase-bundle</module>
@@ -60,13 +61,13 @@
         <module>nifi-scripting-bundle</module>
         <module>nifi-elasticsearch-bundle</module>
         <module>nifi-amqp-bundle</module>
-	<module>nifi-splunk-bundle</module>
+        <module>nifi-splunk-bundle</module>
         <module>nifi-jms-bundle</module>
         <module>nifi-beats-bundle</module>
         <module>nifi-cassandra-bundle</module>
         <module>nifi-spring-bundle</module>
         <module>nifi-hive-bundle</module>
-	<module>nifi-site-to-site-reporting-bundle</module>
+        <module>nifi-site-to-site-reporting-bundle</module>
         <module>nifi-mqtt-bundle</module>
         <module>nifi-evtx-bundle</module>
         <module>nifi-slack-bundle</module>
@@ -80,7 +81,6 @@
         <module>nifi-graph-bundle</module>
         <module>nifi-email-bundle</module>
         <module>nifi-groovyx-bundle</module>
-    	<module>nifi-ranger-bundle</module>
         <module>nifi-websocket-bundle</module>
         <module>nifi-tcp-bundle</module>
         <module>nifi-gcp-bundle</module>
@@ -91,25 +91,39 @@
         <module>nifi-cybersecurity-bundle</module>
         <module>nifi-parquet-bundle</module>
         <module>nifi-extension-utils</module>
+        <module>nifi-ranger-bundle</module>
         <module>nifi-redis-bundle</module>
         <module>nifi-metrics-reporting-bundle</module>
         <module>nifi-spark-bundle</module>
         <module>nifi-atlas-bundle</module>
         <module>nifi-jolt-record-bundle</module>
-	    <module>nifi-network-bundle</module>
+        <module>nifi-network-bundle</module>
         <module>nifi-prometheus-bundle</module>
         <module>nifi-easyrules-bundle</module>
         <module>nifi-sql-reporting-bundle</module>
-	    <module>nifi-rules-action-handler-bundle</module>
+        <module>nifi-rules-action-handler-bundle</module>
         <module>nifi-hazelcast-bundle</module>
-	    <module>nifi-accumulo-bundle</module>
-	    <module>nifi-asn1-bundle</module>
+        <module>nifi-accumulo-bundle</module>
+        <module>nifi-asn1-bundle</module>
         <module>nifi-pgp-bundle</module>
         <module>nifi-hashicorp-vault-bundle</module>
         <module>nifi-stateless-processor-bundle</module>
         <module>nifi-geohash-bundle</module>
         <module>nifi-snowflake-bundle</module>
         <module>nifi-salesforce-bundle</module>
+        <module>nifi-rocksdb-bundle</module>
+        <module>nifi-zendesk-bundle</module>
+        <module>nifi-hubspot-bundle</module>
+        <module>nifi-dropbox-bundle</module>
+        <module>nifi-airtable-bundle</module>
+        <module>nifi-workday-bundle</module>
+        <module>nifi-box-bundle</module>
+        <module>nifi-flow-registry-client-bundle</module>
+        <module>nifi-shopify-bundle</module>
+        <module>nifi-iceberg-bundle</module>
+        <module>nifi-jslt-bundle</module>
+        <module>nifi-iotdb-bundle</module>
+        <module>nifi-cipher-bundle</module>
     </modules>
 
     <build>
@@ -174,178 +188,201 @@
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-distributed-cache-client-service</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-distributed-cache-client-service-api</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-record-serialization-service-api</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-record</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-schema-registry-service-api</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-ssl-context-service-api</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-security-utils-api</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-load-distribution-service-api</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
              <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-http-context-map-api</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-lookup-service-api</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-kerberos-credentials-service-api</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-kerberos-user-service-api</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-security-kerberos-api</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-mongodb-client-service-api</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-record-sink-api</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.nifi</groupId>
+                <artifactId>nifi-oauth2-provider-api</artifactId>
+                <version>1.20.0-SNAPSHOT</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.nifi</groupId>
+                <artifactId>nifi-dbcp-service-api</artifactId>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-distributed-cache-protocol</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-distributed-cache-server</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-ssl-context-service</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-http-context-map</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-proxy-configuration-api</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-cassandra-services-api</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-volatile-provenance-repository</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>test</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-mock</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>test</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-mock-record-utils</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>test</scope>
             </dependency>
             <!-- The following dependencies are marked provided because they must be provided by the container.  Nars can assume they are there-->
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-api</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-framework-api</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-server-api</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-runtime</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-nar-utils</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-properties</artifactId>
-                <version>1.17.0-SNAPSHOT</version>
+                <version>1.20.0-SNAPSHOT</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.nifi</groupId>
+                <artifactId>nifi-web-client-provider-api</artifactId>
+                <version>1.20.0-SNAPSHOT</version>
                 <scope>provided</scope>
             </dependency>
             <!-- Managed dependency versions applicable to all modules -->
+            <dependency>
+                <groupId>org.apache.nifi</groupId>
+                <artifactId>nifi-deprecation-log</artifactId>
+                <version>1.20.0-SNAPSHOT</version>
+            </dependency>
             <dependency>
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-dbcp2</artifactId>

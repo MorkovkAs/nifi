@@ -88,6 +88,12 @@ The next step is to download a copy of the Apache NiFi source code from the http
 
 `mvn clean install -Pinclude-grpc,include-graph,include-media`
 
+There is also a specific profile allowing you to build NiFi with all of the additional bundles that are not included by default:
+
+`mvn clean install -Pinclude-all`
+
+This will include bundles such as gRPC, Atlas, Hive, Hive 1_1, Hive 3, Media, Rules, SQL Reporting, Accumulo, Ranger, ASN1, Snowflake, Iceberg, etc.
+
 == Port Configuration
 
 === NiFi
@@ -181,6 +187,49 @@ Antivirus software can take a long time to scan large directories and the numero
 * `logs`
 * `provenance_repository`
 * `state`
+
+[[logging_configuration]]
+== Logging Configuration
+NiFi uses link:https://logback.qos.ch/[logback^] as the runtime logging implementation. The `conf` directory contains a
+standard `logback.xml` configuration with default appender and level settings. The
+link:https://logback.qos.ch/manual/index.html[logback manual] provides a complete reference of available options.
+
+=== Standard Log Files
+The standard logback configuration includes the following appender definitions and associated log files:
+
+[options="header"]
+|=========================
+| File                   | Description
+| `nifi-app.log`         | Application log containing framework and component messages
+| `nifi-bootstrap.log`   | Bootstrap log containing startup and shutdown messages
+| `nifi-deprecation.log` | Deprecation log containing warnings for deprecated components and features
+| `nifi-request.log`     | HTTP request log containing user interface and REST API access messages
+| `nifi-user.log`        | User log containing authentication and authorization messages
+|=========================
+
+=== Deprecation Logging
+The `nifi-deprecation.log` contains warning messages describing components and features that will be removed in
+subsequent versions. Deprecation warnings should be evaluated and addressed to avoid breaking changes when upgrading to
+a new major version. Resolving deprecation warnings involves upgrading to new components, changing component property
+settings, or refactoring custom component classes.
+
+Deprecation logging provides a method for checking compatibility before upgrading from one major release version to
+another. Upgrading to the latest minor release version will provide the most accurate set of deprecation warnings.
+
+It is important to note that deprecation logging applies to both components and features. Logging for deprecated
+features requires a runtime reference to the property or method impacted. Disabled components with deprecated properties
+or methods will not generate deprecation logs. For this reason, it is important to exercise all configured components
+long enough to exercise standard flow behavior.
+
+Deprecation logging can generate repeated messages depending on component configuration and usage patterns. Disabling
+deprecation logging for a specific component class can be configured by adding a `logger` element to `logback.xml`.
+The `name` attribute must start with `deprecation`, followed by the component class. Setting the `level` attribute to
+`OFF` disables deprecation logging for the component specified.
+
+[source, xml]
+----
+<logger name="deprecation.org.apache.nifi.processors.ListenLegacyProtocol" level="OFF" />
+----
 
 [[security_configuration]]
 == Security Configuration
@@ -460,6 +509,9 @@ JSON Web Key (JWK) provided through the jwks_uri in the metadata found at the di
 |`nifi.security.user.oidc.additional.scopes` | Comma separated scopes that are sent to OpenId Connect Provider in addition to `openid` and `email`.
 |`nifi.security.user.oidc.claim.identifying.user` | Claim that identifies the user to be logged in; default is `email`. May need to be requested via the `nifi.security.user.oidc.additional.scopes` before usage.
 |`nifi.security.user.oidc.fallback.claims.identifying.user` | Comma separated possible fallback claims used to identify the user in case `nifi.security.user.oidc.claim.identifying.user` claim is not present for the login user.
+|`nifi.security.user.oidc.claim.groups` | Name of the ID token claim that contains an array of group names of which the
+user is a member. Application groups must be supplied from a User Group Provider with matching names in order for the
+authorization process to use ID token claim groups. The default value is `groups`.
 |`nifi.security.user.oidc.truststore.strategy` | If value is `NIFI`, use the NiFi truststore when connecting to the OIDC service, otherwise if value is `JDK` use Java's default `cacerts` truststore. The default value is `JDK`.
 |==================================================================================================================================================
 
@@ -468,6 +520,9 @@ JSON Web Key (JWK) provided through the jwks_uri in the metadata found at the di
 
 To enable authentication via SAML the following properties must be configured in _nifi.properties_.
 
+Configuring a Metadata URL and an Entity Identifier enables Apache NiFi to act as a SAML 2.0 Relying Party, allowing users
+to authenticate using an account managed through a SAML 2.0 Asserting Party.
+
 [options="header"]
 |==================================================================================================================================================
 | Property Name | Description
@@ -475,18 +530,29 @@ To enable authentication via SAML the following properties must be configured in
 |`nifi.security.user.saml.sp.entity.id`| The entity id of the service provider (i.e. NiFi). This value will be used as the `Issuer` for SAML authentication requests and should be a valid URI. In some cases the service provider entity id must be registered ahead of time with the identity provider.
 |`nifi.security.user.saml.identity.attribute.name`| The name of a SAML assertion attribute containing the user'sidentity. This property is optional and if not specified, or if the attribute is not found, then the NameID of the Subject will be used.
 |`nifi.security.user.saml.group.attribute.name`| The name of a SAML assertion attribute containing group names the user belongs to. This property is optional, but if populated the groups will be passed along to the authorization process.
-|`nifi.security.user.saml.metadata.signing.enabled`| Enables signing of the generated service provider metadata. The default value is `false`.
 |`nifi.security.user.saml.request.signing.enabled`| Controls the value of `AuthnRequestsSigned` in the generated service provider metadata from `nifi-api/access/saml/metadata`. This indicates that the service provider (i.e. NiFi) should not sign authentication requests sent to the identity provider, but the requests may still need to be signed if the identity provider indicates `WantAuthnRequestSigned=true`. The default value is `false`.
 |`nifi.security.user.saml.want.assertions.signed`| Controls the value of `WantAssertionsSigned` in the generated service provider metadata from `nifi-api/access/saml/metadata`. This indicates that the identity provider should sign assertions, but some identity providers may provide their own configuration for controlling whether assertions are signed. The default value is `true`.
 |`nifi.security.user.saml.signature.algorithm`| The algorithm to use when signing SAML messages. Reference the link:https://git.shibboleth.net/view/?p=java-xmltooling.git;a=blob;f=src/main/java/org/opensaml/xml/signature/SignatureConstants.java[Open SAML Signature Constants] for a list of valid values. If not specified, a default of SHA-256 will be used. The default value is `http://www.w3.org/2001/04/xmldsig-more#rsa-sha256`.
-|`nifi.security.user.saml.signature.digest.algorithm`| The digest algorithm to use when signing SAML messages. Reference the link:https://git.shibboleth.net/view/?p=java-xmltooling.git;a=blob;f=src/main/java/org/opensaml/xml/signature/SignatureConstants.java[Open SAML Signature Constants] for a list of valid values. If not specified, a default of SHA-256 will be used. The default value is `http://www.w3.org/2001/04/xmlenc#sha256`.
-|`nifi.security.user.saml.message.logging.enabled`| Enables logging of SAML messages for debugging purposes. The default value is `false`.
 |`nifi.security.user.saml.authentication.expiration`| The expiration of the NiFi JWT that will be produced from a successful SAML authentication response. The default value is `12 hours`.
 |`nifi.security.user.saml.single.logout.enabled`| Enables SAML SingleLogout which causes a logout from NiFi to logout of the identity provider. By default, a logout of NiFi will only remove the NiFi JWT. The default value is `false`.
-|`nifi.security.user.saml.http.client.truststore.strategy`| The truststore strategy when the IDP metadata URL begins with https. A value of `JDK` indicates to use the JDK's default truststore. A value of`NIFI`indicates to use the truststore specified by `nifi.security.truststore`.
+|`nifi.security.user.saml.http.client.truststore.strategy`| The truststore strategy when the IDP metadata URL begins with https. A value of `JDK` indicates to use the JDK's default truststore. A value of `NIFI` indicates to use the truststore specified by `nifi.security.truststore`.
 |`nifi.security.user.saml.http.client.connect.timeout`| The connection timeout when communicating with the SAML IDP. The default value is `30 secs`.
 |`nifi.security.user.saml.http.client.read.timeout`| The read timeout when communicating with the SAML IDP. The default value is `30 secs`.
 |==================================================================================================================================================
+
+==== SAML REST Resources
+
+SAML authentication enables the following REST API resources for integration with a SAML 2.0 Asserting Party:
+
+[options="header"]
+|======================================
+| Resource Path                                | Description
+| /nifi-api/access/saml/local-logout/request   | Complete SAML 2.0 Logout processing without communicating with the Asserting Party
+| /nifi-api/access/saml/login/consumer         | Process SAML 2.0 Login Requests assertions using HTTP-POST or HTTP-REDIRECT binding
+| /nifi-api/access/saml/metadata               | Retrieve SAML 2.0 entity descriptor metadata as XML
+| /nifi-api/access/saml/single-logout/consumer | Process SAML 2.0 Single Logout Request assertions using HTTP-POST or HTTP-REDIRECT binding. Requires Single Logout to be enabled.
+| /nifi-api/access/saml/single-logout/request  | Complete SAML 2.0 Single Logout processing initiating a request to the Asserting Party. Requires Single Logout to be enabled.
+|======================================
 
 [[apache_knox]]
 === Apache Knox
@@ -524,6 +590,42 @@ The following settings can be configured in _nifi.properties_ to control JSON We
 | Property Name | Description
 |`nifi.security.user.jws.key.rotation.period` | JSON Web Signature Key Rotation Period defines how often the system generates a new RSA Key Pair, expressed as an ISO 8601 duration. The default is one hour: `PT1H`
 |==================================================================================================================================================
+
+[[csrf-protection]]
+=== Cross-Site Request Forgery Protection
+
+NiFi 1.15.0 introduced
+link:https://owasp.org/www-community/attacks/csrf[Cross-Site Request Forgery] protection as part of user interface
+access based on session cookies. CSRF protection builds on standard
+link:https://docs.spring.io/spring-security/reference/features/exploits/csrf.html[Spring Security features]
+and implements the
+link:https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#double-submit-cookie[double submit cookie]
+strategy. The implementation strategy relies on the server generating and sending a random request token cookie at the
+beginning of the session. The client browser stores the cookie, JavaScript application code reads the cookie, and sets
+the value in a custom HTTP header on subsequent requests.
+
+NiFi applies the `SameSite` attribute with a value of `Strict` to session cookies, which instructs supporting web
+browsers to avoid sending the cookie on requests that a third party initiates. These protections mitigate a number of
+potential threats.
+
+Cookie names are not considered part of the public REST API and are subject to change in minor release
+versions. Programmatic HTTP requests to the NiFi REST API should use the standard HTTP `Authorization` header when
+sending access tokens instead of the session cookie that the NiFi user interface uses.
+
+NiFi deployments that include HTTP load balanced access with <<session_affinity>> depend on custom HTTP cookies,
+requiring custom programmatic clients to store and send cookies for the duration of an authenticated session.
+Programmatic clients in these scenarios should limit cookie storage to cookie names specific to the HTTP load balancer
+to avoid HTTP 403 Forbidden errors related to CSRF filtering.
+
+The CSRF implementation sends the following HTTP cookie to set the random request token for the session:
+
+- Cookie Name: `__Secure-Request-Token`
+- Value: Random UUID
+
+The CSRF security filter expects the following HTTP request header on non-idempotent methods such as `POST` or `PUT`:
+
+- Header Name: `Request-Token`
+- Value: UUID matching the `__Secure-Request-Token` cookie header
 
 [[multi-tenant-authorization]]
 == Multi-Tenant Authorization
@@ -1290,7 +1392,7 @@ Global access policies govern the following system level authorizations:
 |`/flow`
 
 |access the controller
-|Allows users to view/modify the controller including Reporting Tasks, Controller Services, Parameter Contexts and Nodes in the Cluster
+|Allows users to view/modify the controller including Management Controller Services, Reporting Tasks, Registry Clients, Parameter Providers and nodes in the cluster
 |Controller Settings
 |`/controller`
 
@@ -1542,10 +1644,155 @@ Being added to both the view and modify policies for the process group, User2 ca
 
 image:user2-edit-connection.png["User2 Edit Connection"]
 
+[[repository-encryption]]
+== Repository Encryption
+
+NiFi supports encryption of local repositories using a configurable Key Provider to enable protection of information
+on the filesystem. Repository encryption configuration uses a version number to indicate the cipher algorithms, metadata
+format, and repository implementation classes. This approach provides a generalized method for configuration without the
+need to customize each repository implementation class.
+
+Repository encryption incurs a performance cost due to the overhead of cipher operations. Filesystem encryption at the
+operating system level provides an alternative solution, with different performance characteristics. For deployments
+where filesystem encryption is not configured, repository encryption provides an enhanced level of data protection.
+Due to increased performance requirements, more computing resources may be necessary to achieve sufficient throughput
+when enabling repository encryption.
+
+The security of repository encryption depends on a combination of the cipher algorithms and the protection of encryption
+keys. Key protection and key rotation are important parts of securing an encrypted repository configuration.
+Key protection involves limiting access to the Key Provider and key rotation requires manual updates to generate and
+specify a new encryption key.
+
+=== Configuration Change Considerations
+
+Disabling repository encryption on existing installations requires removing existing repository contents, and
+restarting the system after making configuration changes. For this reason, flow administrators should confirm that the
+system has processed all available FlowFiles to avoid losing information when disabling repository encryption.
+
+=== Repository Encryption Protocol Version 1
+
+The first version of support for repository encryption includes the following cipher algorithms:
+
+[options="header"]
+|=======================
+|Repository Type       |Cipher Algorithm
+|Content Repository    |AES/CTR/NoPadding
+|FlowFile Repository   |AES/GCM/NoPadding
+|FlowFile Swap Manager |AES/GCM/NoPadding
+|Provenance Repository |AES/GCM/NoPadding
+|=======================
+
+The following classes provide the direct repository encryption implementation, extending standard classes:
+
+[options="header"]
+|=======================
+|Repository Type       |Class
+|Content Repository    |org.apache.nifi.content.EncryptedFileSystemRepository
+|FlowFile Repository   |org.apache.nifi.wali.EncryptedSequentialAccessWriteAheadLog
+|FlowFile Swap Manager |org.apache.nifi.controller.EncryptedFileSystemSwapManager
+|Provenance Repository |org.apache.nifi.provenance.EncryptedWriteAheadProvenanceRepository
+|=======================
+
+==== Encryption Metadata Serialization
+
+Each repository implementation class leverages standard cipher operations to perform encryption and decryption. In order
+to support AES, the encryption process writes metadata associated with each encryption operation. Encryption protocol
+version 1 uses Java Object serialization to write objects containing the encryption Key Identifier, the cipher
+Initialization Vector, and other required properties. Serialized objects include the following required properties:
+
+[options="header"]
+|=====================
+|Property Name       |Property Type |Description
+|keyId               |String        |Encryption key identifier
+|ivBytes             |byte[]        |Cipher initialization vector
+|algorithm           |String        |Cipher algorithm
+|version             |String        |Encryption protocol version
+|cipherByteLength    |int           |Length of enciphered record
+|=====================
+
+Metadata serialization uses the standard `java.io.ObjectOutputStream.writeObject()` method to write objects to a stream
+that can be converted to a byte array. The deserialization process uses a custom extension of the
+`java.io.ObjectInputStream` to read objects regardless of the original class name associated with the record. This
+approach requires the presence of the standard metadata properties, but provides a compatibility layer that avoids
+linking the implementation to a specific Java class.
+
+The initial implementation of encrypted repositories used different byte array markers when writing metadata. Each
+repository implementation uses the following byte array markers before writing a serialized metadata record:
+
+[options="header"]
+|=======================
+|Repository Type       |Byte Array
+|Content Repository    |byte[]{0x00, 0x00}
+|FlowFile Repository   |byte[]{}
+|Provenance Repository |byte[]{0x01}
+|=======================
+
+=== Repository Encryption Configuration
+
+Configuring repository encryption requires specifying the encryption protocol version and the associated Key Provider
+properties. Repository encryption can be configured on new or existing installations using standard properties. Records
+in existing repositories should be readable using standard capabilities, and the encrypted repository will write new
+records using the specified configuration.
+
+==== Protocol Version Configuration
+
+Setting the following protocol version property enables encryption for all repositories:
+
+....
+nifi.repository.encryption.protocol.version=1
+....
+
+==== Key Provider Configuration
+
+All encrypted repositories require a Key Provider to perform encryption and decryption operations. NiFi supports
+configuring the Key Provider implementation as well as the Key Identifier that will be used for new encryption
+operations. Key Provider implementations can hold multiple keys to support using a new key while maintaining access to
+information encrypted using the previous key.
+
+Repository encryption supports access to secret keys using standard `java.security.KeyStore` files.
+See <<secret-key-generation-and-storage-using-keytool>> for details on supported KeyStore types, as well as examples of
+generating secret keys.
+
+The following configuration properties provide an example using a PKCS12 KeyStore file named `repository.p12` containing
+a secret key labeled with an alias of `primary-key`:
+
+....
+nifi.repository.encryption.key.id=primary-key
+nifi.repository.encryption.key.provider=KEYSTORE
+nifi.repository.encryption.key.provider.keystore.location=conf/repository.p12
+nifi.repository.encryption.key.provider.keystore.password=2fRKmwDyMYmT7P5L
+....
+
+[[secret-key-generation-and-storage-using-keytool]]
+==== Secret Key Generation and Storage using Keytool
+
+The `KeyStoreKeyProvider` supports reading from a `java.security.KeyStore` using a configured password to load AES Secret Key entries.
+The `KeyStoreKeyProvider` can be configured with any of the encrypted repository implementations.
+
+The provider supports the following KeyStore Types:
+
+* BCFKS
+* PKCS12
+
+The keystore filename extension must be either `.p12` indicating PKCS12 or `.bcfks` indicating BCFKS.
+
+The `keytool` command can be used to generate an AES-256 Secret Key stored in a PKCS12 file for repository encryption:
+
+  keytool -genseckey -alias primary-key -keyalg AES -keysize 256 -keystore repository.p12 -storetype PKCS12
+
+The `keytool` command requires additional arguments specifying the BouncyCastle Security Provider to store
+Secret Keys using BCFKS. The arguments must include a reference to the BouncyCastle Security Provider library, which
+is available in the `lib/bootstrap` directory under the NiFi installation.
+
+The following command can be used to generate an AES-256 Secret Key stored using BCFKS:
+
+  keytool -genseckey -alias primary-key -keyalg AES -keysize 256 -keystore repository.bcfks -storetype BCFKS -providerclass org.bouncycastle.jce.provider.BouncyCastleProvider -providerpath lib/bootstrap/bcprov-jdk15on-*.jar
+
+Enter a keystore password when prompted. The same value must be used for both the keystore password and key password.
+The keystore password will be used in the provider configuration properties.
+
 [[encryption]]
 == Encryption Configuration
-
-This section provides an overview of the capabilities of NiFi to encrypt and decrypt data.
 
 The EncryptContent processor allows for the encryption and decryption of data, both internal to NiFi and integrated with external systems, such as `openssl` and other data sources and consumers.
 
@@ -2631,7 +2878,8 @@ in the _$NIFI_HOME/conf/nifi.properties_ file:
 [options="header,footer"]
 |===
 |Property Name|Description|Default
-|`nifi.zookeeper.client.secure`|Whether to acccess ZooKeeper using client TLS.|false
+|`nifi.zookeeper.client.ensembleTracker`|Whether to enable ZooKeeper client Ensemble Tracking.|true
+|`nifi.zookeeper.client.secure`|Whether to access ZooKeeper using client TLS.|false
 |`nifi.zookeeper.security.keystore`|Filename of the Keystore containing the private key to use when communicating with ZooKeeper.|_none_
 |`nifi.zookeeper.security.keystoreType`|Optional. The type of the Keystore. Must be `PKCS12`, `JKS`, or `PEM`. If not specified the type will be determined from the file extension (`.p12`, `.jks`, `.pem`).|_none_
 |`nifi.zookeeper.security.keystorePasswd`|The password for the Keystore.|_none_
@@ -2882,7 +3130,7 @@ A complete example of configuring the HTTP service could look like the following
 
 [[proxy_configuration]]
 == Proxy Configuration
-​When running Apache NiFi behind a proxy there are a couple of key items to be aware of during deployment.
+When running Apache NiFi behind a proxy there are a couple of key items to be aware of during deployment.
 
 * NiFi is comprised of a number of web applications (web UI, web API, documentation, custom UIs, data viewers, etc), so the mapping needs to be configured for the *root path*. That way all context
 paths are passed through accordingly. For instance, if only the `/nifi` context path was mapped, the custom UI for UpdateAttribute will not work, since it is available at `/update-attribute-ui-<version>`.
@@ -2950,6 +3198,55 @@ present in the allow list, the "An unexpected error has occurred" page will be s
 * Additional configurations at both proxy server and NiFi cluster are required to make NiFi Site-to-Site work behind reverse proxies. See <<site_to_site_reverse_proxy_properties>> for details.
 
 ** In order to transfer data via Site-to-Site protocol through reverse proxies, both proxy and Site-to-Site client NiFi users need to have following policies, 'retrieve site-to-site details', 'receive data via site-to-site' for input ports, and 'send data via site-to-site' for output ports.
+
+[[session_affinity]]
+=== Session Affinity
+
+All HTTP requests from a single client must be routed to the same Apache NiFi node for the duration of an authenticated
+session. This applies to both browser-based users and programmatic clients accessing the REST API. This is not a concern
+for standalone deployments or direct network access to Apache NiFi, but accessing clustered nodes through a proxy server
+or load balancer requires enabling session affinity, also known as sticky sessions. Session affinity is required for
+mediated access to traditional cluster deployments as well as containerized deployments using platforms such as
+Kubernetes.
+
+Access to clustered deployments through a gateway requires session affinity for the following reasons:
+
+* Each node uses a local key for signing and verifying JSON Web Tokens
+* Each node uses a local cache for tracking configuration change transactions
+
+Attempting to access a clustered node through a gateway without session affinity will result in intermittent failures of
+various types. When authenticating to Apache NiFi with username and password credentials, the lack of session affinity
+often results in HTTP 401 Unauthorized responses, indicating that the node did not accept the JSON Web Token. These
+failures can occur at different times based on the load balancing strategy. Accessing Apache NiFi using an X.509
+certificate avoids the verification issues associated with JSON Web Tokens, but is still subject to problems related to
+configuration change transaction handling across cluster nodes.
+
+==== Session Affinity Configuration
+
+Enabling session affinity requires different settings depending on the product or service providing access. It is
+essential that the session affinity configuration has a timeout that is greater than the session expiration when
+authenticating with username and password credentials.
+
+===== Apache HTTP Server Configuration
+
+link:https://httpd.apache.org[Apache HTTP Server] supports session affinity in the
+link:https://httpd.apache.org/docs/2.4/mod/mod_proxy.html[mod_proxy] module using the
+link:https://httpd.apache.org/docs/2.4/mod/mod_proxy.html#proxypass[ProxyPass] directive with the
+link:https://httpd.apache.org/docs/2.4/mod/mod_proxy_balancer.html#stickyness_implementation[stickysession] parameter to
+configure a cookie name for request routing.
+
+===== Kubernetes Nginx Ingress Controller
+
+The link:https://kubernetes.github.io/ingress-nginx/[Kubernetes Nginx Ingress Controller]
+supports session affinity using deployment annotations to configure
+link:https://kubernetes.github.io/ingress-nginx/examples/affinity/cookie/[sticky sessions] with cookies. The deployment
+annotations provide the ability to configure cookie attributes, including expiration.
+
+===== Nginx Configuration
+
+link:https://nginx.org/[Nginx] supports session affinity in the upstream module using the
+link:https://nginx.org/en/docs/http/ngx_http_upstream_module.html#sticky[sticky] directive. The *sticky* directive
+supports different strategies, including *cookie* and *route* options.
 
 [[kerberos_service]]
 == Kerberos Service
@@ -3075,6 +3372,9 @@ For example, to provide two additional library locations, a user could also spec
 Providing three total locations, including  `nifi.nar.library.directory`.
 |`nifi.nar.working.directory`|The location of the nar working directory. The default value is `./work/nar` and probably should be left as is.
 |`nifi.documentation.working.directory`|The documentation working directory. The default value is `./work/docs/components` and probably should be left as is.
+|`nifi.nar.unpack.uber.jar`|If set to `true`, when a nar file is unpacked, the inner jar files will be unpacked into a single jar file instead of individual jar files. This can result in NiFi taking
+longer to startup for the first time (about 1-2 minutes, typically) but can result in far fewer open file handles, which can be helpful in certain environments. The default value is `false`. This
+feature is considered experimental. Changing the value of this property may not take effect unless the working directory is also deleted.
 |`nifi.processor.scheduling.timeout`|Time to wait for a Processor's life-cycle operation (`@OnScheduled` and `@OnUnscheduled`) to finish before other life-cycle operation (e.g., *stop*) could be invoked. The default value is `1 min`.
 |===
 
@@ -3195,6 +3495,8 @@ This implementation stores FlowFiles in memory instead of on disk.  It *will* re
 
 
 === RocksDB FlowFile Repository
+
+WARNING: The `RocksDBFlowFileRepository` is deprecated in favor of the `WriteAheadFlowFileRepository`. It will be removed in future major versions of Apache NiFi. To use it in NiFi 1.x, you must download nifi-rocksdb-nar from the Apache Nexus Repository and place it in your NiFi lib directory.
 
 This implementation makes use of the RocksDB key-value store.  It uses periodic synchronization to ensure that no created or received data is lost (as long as `nifi.flowfile.repository.rocksdb.accept.data.loss` is set `false`).  In the event of a failure (e.g. power loss), _work_ done on FlowFiles through the system (i.e. routing and transformation) may still be lost.  Specifically, the record of these actions may be lost, reverting the affected FlowFiles to a previous, valid state.  From there, they will resume their path through the flow as normal.  This guarantee comes at the expense of a delay on operations that add new data to the system.  This delay is configurable (as `nifi.flowfile.repository.rocksdb.sync.period`), and can be tuned to the individual system.
 
@@ -4114,8 +4416,35 @@ To enable it, both `nifi.monitor.long.running.task.schedule` and `nifi.monitor.l
 |*Property*|*Description*
 |`nifi.monitor.long.running.task.schedule`|The time period between successive executions of the Long-Running Task Monitor (e.g. `1 min`).
 |`nifi.monitor.long.running.task.threshold`|The time period beyond which a task is considered long-running, i.e. stuck / hanging (e.g. `5 mins`).
-
 |====
+
+
+[[performance_tracking_properties]]
+=== Performance Tracking Properties
+
+NiFi exposes a very significant number of metrics by default through the User Interface. However, there are sometimes additional metrics that may add in diagnosing bottlenecks
+and improving the performance of the NiFi dataflow.
+
+The `nifi.performance.tracking.percentage` property can be used to enable the tracking of additional metrics. Gathering these metrics, however, require system calls, which can be
+expensive on some systems. As a result, this property defaults to a value of `0`, indicating that the metrics should be captured 0% of the time. I.e., the feature is disabled by
+default. To enable this feature, set the value of this property to an integer value in the range of 0 to 100, inclusive. This represents what percentage of the time NiFi should
+gather these metrics.
+
+For example, if the value is set to 20, then NiFi will gather these metrics for each processor approximately 20% of the times that the Processor is run. The remainder of the time,
+it will use the values that it has already captured in order to extrapolate the metrics to additional runs.
+
+The metrics that are gathered include what percentage of the time the processor is utilizing the CPU (versus waiting for I/O to complete or blocking due to monitor/lock contention),
+what percentage of time the Processor spends reading from the Content Repository, writing to the Content Repository, blocked due to Garbage Collection, etc.
+
+So, continuing our example, if we set the value of the `nifi.performance.tracking.percentage` and a processor is triggered to run 1,000 times, then NiFi will measure how much CPU
+time was consumed over the 200 iterations during which it was measured (i.e., 20% of 1,000). Let's say that this amounts to 500 milliseconds of CPU time. Additionally, let's consider
+that the Processor took 5,000 milliseconds to complete those 200 invocations because most of the time was spent blocking on Socket I/O. From this, NiFi will calculate that the CPU
+is used approximately 10% of the time (500 / 5,000 * 100%). Now, let's consider that in order to complete all 1,000 invocations the Processor took 35 seconds. NiFi will calculate,
+then, that the Processor has used approximately 3.5 seconds (or 3500 milliseconds) of CPU time.
+
+As a result, if we set the value of this property higher, up to a value of `100`, we will get more accurate results. However, it may be more expensive to monitor.
+
+In order to view these metrics, we can gather diagnostics by running the command `nifi.sh diagnostics <filename>` and inspecting the generated file. See <<nifi_diagnostics>> for more information.
 
 [[custom_properties]]
 === Custom Properties
@@ -4522,8 +4851,9 @@ Example configuration:
    nifi.nar.library.provider.hdfs2.resources=/etc/hadoop/core-site.xml
    nifi.nar.library.provider.hdfs2.source.directory=/other/dir/for/customNars
 
-NOTE: For backward compatibility reasons, `org.apache.nifi.nar.hadoop.HDFSNarProvider` is still an accepted implementation, but it is suggested to use 'org.apache.nifi.flow.resource.hadoop.HDFSExternalResourceProvider' instead. Features introduced with the External Resource Provider might not work with this implementation!
+NOTE: For backward compatibility reasons, `org.apache.nifi.nar.hadoop.HDFSNarProvider` is still an accepted implementation, but it is suggested to use 'org.apache.nifi.flow.resource.hadoop.HDFSExternalResourceProvider' instead.Features introduced with the External Resource Provider might not work with this implementation!
 
+[[nifi_diagnostics]]
 == NiFi diagnostics
 
 It is possible to get diagnostics data from a NiFi node by executing the below command:

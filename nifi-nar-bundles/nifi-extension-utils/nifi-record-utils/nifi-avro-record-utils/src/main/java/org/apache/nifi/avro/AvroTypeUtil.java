@@ -89,6 +89,7 @@ public class AvroTypeUtil {
     private static final String LOGICAL_TYPE_TIMESTAMP_MILLIS = "timestamp-millis";
     private static final String LOGICAL_TYPE_TIMESTAMP_MICROS = "timestamp-micros";
     private static final String LOGICAL_TYPE_DECIMAL = "decimal";
+    private static final String LOGICAL_TYPE_UUID = "uuid";
 
 
     public static Schema extractAvroSchema(final RecordSchema recordSchema) {
@@ -299,6 +300,10 @@ public class AvroTypeUtil {
                 schema = Schema.create(Type.LONG);
                 LogicalTypes.timestampMillis().addToSchema(schema);
                 break;
+            case UUID:
+                schema = Schema.create(Type.STRING);
+                LogicalTypes.uuid().addToSchema(schema);
+                break;
             case ENUM:
                 final EnumDataType enumType = (EnumDataType) dataType;
                 schema = Schema.createEnum(fieldName, "", "org.apache.nifi", enumType.getEnums());
@@ -362,6 +367,8 @@ public class AvroTypeUtil {
                 case LOGICAL_TYPE_DECIMAL:
                     final LogicalTypes.Decimal decimal = (LogicalTypes.Decimal) logicalType;
                     return RecordFieldType.DECIMAL.getDecimalDataType(decimal.getPrecision(), decimal.getScale());
+                case LOGICAL_TYPE_UUID:
+                    return RecordFieldType.UUID.getDataType();
             }
         }
 
@@ -898,36 +905,45 @@ public class AvroTypeUtil {
         return convertAvroRecordToMap(avroRecord, recordSchema, StandardCharsets.UTF_8);
     }
 
+    private static String getMatchingFieldName(final GenericRecord record, final RecordField field) {
+        final Schema schema = record.getSchema();
+        Field avroField = schema.getField(field.getFieldName());
+        if (avroField != null) {
+            return field.getFieldName();
+        }
+
+        for (final String alias : field.getAliases()) {
+            avroField = schema.getField(alias);
+            if (avroField != null) {
+                return alias;
+            }
+        }
+
+        return null;
+    }
+
     public static Map<String, Object> convertAvroRecordToMap(final GenericRecord avroRecord, final RecordSchema recordSchema, final Charset charset) {
         final Map<String, Object> values = new HashMap<>(recordSchema.getFieldCount());
 
         for (final RecordField recordField : recordSchema.getFields()) {
-
-            Object value = avroRecord.get(recordField.getFieldName());
-            if (value == null) {
-                for (final String alias : recordField.getAliases()) {
-                    value = avroRecord.get(alias);
-                    if (value != null) {
-                        break;
-                    }
-                }
-            }
+            final String relevantFieldName = getMatchingFieldName(avroRecord, recordField);
+            final Object value = (relevantFieldName == null) ? null : avroRecord.get(relevantFieldName);
 
             final String fieldName = recordField.getFieldName();
             try {
-            final Field avroField = avroRecord.getSchema().getField(fieldName);
-            if (avroField == null) {
-                values.put(fieldName, null);
-                continue;
-            }
+                final Field avroField = avroRecord.getSchema().getField(relevantFieldName);
+                if (avroField == null) {
+                    values.put(fieldName, null);
+                    continue;
+                }
 
-            final Schema fieldSchema = avroField.schema();
-            final Object rawValue = normalizeValue(value, fieldSchema, fieldName);
+                final Schema fieldSchema = avroField.schema();
+                final Object rawValue = normalizeValue(value, fieldSchema, fieldName);
 
-            final DataType desiredType = recordField.getDataType();
-            final Object coercedValue = DataTypeUtils.convertType(rawValue, desiredType, fieldName, charset);
+                final DataType desiredType = recordField.getDataType();
+                final Object coercedValue = DataTypeUtils.convertType(rawValue, desiredType, fieldName, charset);
 
-            values.put(fieldName, coercedValue);
+                values.put(fieldName, coercedValue);
             } catch (Exception ex) {
                 logger.debug("fail to convert field " + fieldName, ex );
                 throw ex;

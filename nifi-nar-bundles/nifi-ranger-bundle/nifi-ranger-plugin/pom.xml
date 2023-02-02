@@ -19,14 +19,11 @@
     <parent>
         <groupId>org.apache.nifi</groupId>
         <artifactId>nifi-ranger-bundle</artifactId>
-        <version>1.17.0-SNAPSHOT</version>
+        <version>1.20.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>nifi-ranger-plugin</artifactId>
     <packaging>jar</packaging>
-    <properties>
-        <ranger.hadoop.version>3.3.2</ranger.hadoop.version>
-    </properties>
     <dependencies>
         <dependency>
             <groupId>org.apache.nifi</groupId>
@@ -64,6 +61,10 @@
                 <exclusion>
                     <groupId>commons-logging</groupId>
                     <artifactId>commons-logging</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>ch.qos.logback</groupId>
+                    <artifactId>logback-classic</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
@@ -126,6 +127,10 @@
             <version>${ranger.hadoop.version}</version>
             <exclusions>
                 <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-reload4j</artifactId>
+                </exclusion>
+                <exclusion>
                     <groupId>log4j</groupId>
                     <artifactId>log4j</artifactId>
                 </exclusion>
@@ -148,6 +153,10 @@
                 </exclusion>
                 <exclusion>
                     <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-reload4j</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
                     <artifactId>slf4j-log4j12</artifactId>
                 </exclusion>
                 <exclusion>
@@ -157,6 +166,10 @@
                 <exclusion>
                     <groupId>commons-logging</groupId>
                     <artifactId>commons-logging</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>ch.qos.logback</groupId>
+                    <artifactId>logback-classic</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
@@ -169,6 +182,10 @@
             <artifactId>hadoop-auth</artifactId>
             <version>${ranger.hadoop.version}</version>
             <exclusions>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-reload4j</artifactId>
+                </exclusion>
                 <exclusion>
                     <groupId>org.slf4j</groupId>
                     <artifactId>slf4j-log4j12</artifactId>
@@ -186,12 +203,12 @@
         <dependency>
             <groupId>org.apache.nifi</groupId>
             <artifactId>nifi-xml-processing</artifactId>
-            <version>1.17.0-SNAPSHOT</version>
+            <version>1.20.0-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>org.apache.nifi</groupId>
             <artifactId>nifi-mock</artifactId>
-            <version>1.17.0-SNAPSHOT</version>
+            <version>1.20.0-SNAPSHOT</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -203,6 +220,18 @@
     </dependencies>
 
     <profiles>
+        <!-- Disable tests on AArch64 which does not have necessary platform-specific libraries -->
+        <profile>
+            <id>disable-ranger-tests</id>
+            <activation>
+                <os>
+                    <arch>aarch64</arch>
+                </os>
+            </activation>
+            <properties>
+                <skipTests>true</skipTests>
+            </properties>
+        </profile>
         <!-- Includes hadoop-aws for accessing HDFS with an s3a:// filesystem -->
         <profile>
             <id>include-hadoop-aws</id>
@@ -292,7 +321,23 @@
                           <groupId>org.apache.logging.log4j</groupId>
                           <artifactId>log4j-core</artifactId>
                       </exclusion>
+                        <exclusion>
+                            <groupId>org.bouncycastle</groupId>
+                            <artifactId>bcprov-jdk15on</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>org.bouncycastle</groupId>
+                            <artifactId>bcpkix-jdk15on</artifactId>
+                        </exclusion>
                     </exclusions>
+                </dependency>
+                <dependency>
+                    <groupId>org.bouncycastle</groupId>
+                    <artifactId>bcprov-jdk18on</artifactId>
+                </dependency>
+                <dependency>
+                    <groupId>org.bouncycastle</groupId>
+                    <artifactId>bcpkix-jdk18on</artifactId>
                 </dependency>
                 <dependency>
                     <groupId>org.apache.ozone</groupId>

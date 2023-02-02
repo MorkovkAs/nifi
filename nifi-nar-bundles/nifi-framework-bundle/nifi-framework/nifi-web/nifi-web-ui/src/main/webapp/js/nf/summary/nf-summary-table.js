@@ -67,6 +67,8 @@
         }
     };
 
+    var showOnlyPrimaryNodeProcessors = false;
+
     var DATA_SEPARATOR = '&nbsp;&nbsp;|&nbsp;&nbsp;';
 
     /**
@@ -177,6 +179,8 @@
             select: function () {
                 var tab = $(this).text();
                 if (tab === 'Processors') {
+                    $('#summary-filter-status-dropdown').show();
+                    $('#summary-filter-primary-node-container').show();
                     // ensure the processor table is sized properly
                     var processorsGrid = $('#processor-summary-table').data('gridInstance');
                     if (nfCommon.isDefinedAndNotNull(processorsGrid)) {
@@ -200,7 +204,41 @@
                             applyFilter();
                         }
                     });
+
+                    // update the combo for processors
+                    $('#summary-filter-status-dropdown').combo({
+                        options: [{
+                            text: 'All Statuses',
+                            value: 'all-statuses'
+                        },{
+                            text: 'Running',
+                            value: 'Running'
+                        }, {
+                            text: 'Stopped',
+                            value: 'Stopped'
+                        }, {
+                            text: 'Validating',
+                            value: 'Validating'
+                        }, {
+                            text: 'Disabled',
+                            value: 'Disabled'
+                        }, {
+                            text: 'Invalid',
+                            value: 'Invalid'
+                        }],
+                        select: function (option) {
+                            applyFilter();
+                        }
+                    });
+
+                    $('#summary-filter-primary-node').on('change', function (event, args) {
+                        showOnlyPrimaryNodeProcessors = args.isChecked;
+                        applyFilter()
+                    });
                 } else if (tab === 'Connections') {
+                    $('#summary-filter-status-dropdown').hide();
+                    $('#summary-filter-primary-node-container').hide();
+                    resetPrimaryNodeCheckbox();
                     // ensure the connection table is size properly
                     var connectionsGrid = $('#connection-summary-table').data('gridInstance');
                     if (nfCommon.isDefinedAndNotNull(connectionsGrid)) {
@@ -228,6 +266,9 @@
                         }
                     });
                 } else if (tab === 'Input Ports') {
+                    $('#summary-filter-status-dropdown').show();
+                    $('#summary-filter-primary-node-container').hide();
+                    resetPrimaryNodeCheckbox();
                     // ensure the connection table is size properly
                     var inputPortsGrid = $('#input-port-summary-table').data('gridInstance');
                     if (nfCommon.isDefinedAndNotNull(inputPortsGrid)) {
@@ -249,6 +290,9 @@
                         }
                     });
                 } else if (tab === 'Output Ports') {
+                    $('#summary-filter-status-dropdown').show();
+                    $('#summary-filter-primary-node-container').hide();
+                    resetPrimaryNodeCheckbox();
                     // ensure the connection table is size properly
                     var outputPortsGrid = $('#output-port-summary-table').data('gridInstance');
                     if (nfCommon.isDefinedAndNotNull(outputPortsGrid)) {
@@ -270,6 +314,9 @@
                         }
                     });
                 } else if (tab === 'Remote Process Groups') {
+                    $('#summary-filter-status-dropdown').hide();
+                    $('#summary-filter-primary-node-container').hide();
+                    resetPrimaryNodeCheckbox();
                     // ensure the connection table is size properly
                     var remoteProcessGroupsGrid = $('#remote-process-group-summary-table').data('gridInstance');
                     if (nfCommon.isDefinedAndNotNull(remoteProcessGroupsGrid)) {
@@ -294,6 +341,9 @@
                         }
                     });
                 } else {
+                    $('#summary-filter-status-dropdown').hide();
+                    $('#summary-filter-primary-node-container').hide();
+                    resetPrimaryNodeCheckbox();
                     // ensure the connection table is size properly
                     var processGroupGrid = $('#process-group-summary-table').data('gridInstance');
                     if (nfCommon.isDefinedAndNotNull(processGroupGrid)) {
@@ -1155,6 +1205,47 @@
             return '<div layout="row"><div class="' + classes + '"></div><div class="status-text">' + label + '</div></div>';
         };
 
+        var rootProcessGroupStatus;
+        var getRootProcessGroupStatus = function () {
+            return $.ajax({
+                type: 'GET',
+                url: config.urls.status,
+                dataType: 'json'
+            }).done(function (response) {
+                 rootProcessGroupStatus = response.processGroupStatus;
+            });
+        };
+
+        var rootProcessGroupTotals = {};
+        var getRootProcessGroupTotals = function () {
+            getRootProcessGroupStatus().then( function () {
+                rootProcessGroupTotals['taskDuration'] = rootProcessGroupStatus.aggregateSnapshot.processingNanos;
+                rootProcessGroupTotals['threadCount'] = rootProcessGroupStatus.aggregateSnapshot.activeThreadCount;
+            });
+        };
+
+        getRootProcessGroupTotals();
+
+        var calculateUsage = function (used, total) {
+            var result = 0;
+            if (total != undefined && total > 0) {
+                result = Math.round((used / total) * 100);
+            }
+            return result;
+        };
+
+        //define custom formatter for total task duration (% compared to root process group)
+        var taskDurationFormatter = function (row, cell, value, columnDef, dataContext) {
+            return nfCommon.formatDuration(Math.round(dataContext.processingNanos / 1000000)) + '&nbsp;&nbsp;(' +
+                nfCommon.formatValue(calculateUsage(dataContext.processingNanos, rootProcessGroupTotals.taskDuration)) + '%)';
+        };
+
+        //define custom formatter for active thread count (% compared to root process group)
+        var threadCountFormatter = function (row, cell, value, columnDef, dataContext) {
+            return nfCommon.formatValue(dataContext.activeThreadCount) + '&nbsp;&nbsp;(' +
+                nfCommon.formatValue(calculateUsage(dataContext.activeThreadCount, rootProcessGroupTotals.threadCount)) + '%)';
+        };
+
         // define the column model for the summary table
         var processGroupsColumnModel = [
             moreDetailsColumn,
@@ -1179,7 +1270,27 @@
             ioColumn,
             outputColumn,
             sentColumn,
-            receivedColumn
+            receivedColumn,
+         {
+            id: 'activeThreads',
+            field: 'activeThreads',
+            name: '<span class="thread-count-title">Active Threads</span>&nbsp;(<span class="thread-count-percentage-title">%</span>)&nbsp;<span style="font-weight: normal; overflow: hidden;">5 min</span>',
+            toolTip: 'Total active thread count within ProcessGroup (% of total active thread count compared to overall active thread count in root ProcessGroup) in the last 5 min',
+            sortable: true,
+            defaultSortAsc: false,
+            resizable: true,
+            formatter: threadCountFormatter
+        },
+       {
+            id: 'taskDuration',
+            field: 'taskDuration',
+            name: '<span class="duration-title">Total Task Duration</span>&nbsp;(<span class="duration-percentage-title">%</span>)&nbsp;<span style="font-weight: normal; overflow: hidden;">5 min</span>',
+            toolTip: 'Total task duration within ProcessGroup (% of total task duration compared to overall task duration in root ProcessGroup) in the last 5 min',
+            sortable: true,
+            defaultSortAsc: false,
+            resizable: true,
+            formatter: taskDurationFormatter
+        }
         ];
 
         // add an action column if appropriate
@@ -1332,6 +1443,11 @@
                 }
             }
         });
+
+       // update root process group total values on refresh
+       $('#refresh-button').click(function () {
+            getRootProcessGroupTotals();
+       });
 
         // initialize the cluster process group summary dialog
         $('#cluster-process-group-summary-dialog').modal({
@@ -2458,6 +2574,10 @@
         $('#' + tableId + ' span.received-size-title').removeClass('sorted');
         $('#' + tableId + ' span.transferred-title').removeClass('sorted');
         $('#' + tableId + ' span.transferred-size-title').removeClass('sorted');
+        $('#' + tableId + ' span.thread-count-title').removeClass('sorted');
+        $('#' + tableId + ' span.thread-count-percentage-title').removeClass('sorted');
+        $('#' + tableId + ' span.duration-title').removeClass('sorted');
+        $('#' + tableId + ' span.duration-percentage-title').removeClass('sorted');
 
         // update/reset the count as appropriate
         if (sortState[tableId].prevColumn !== sortDetails.columnId) {
@@ -2481,6 +2601,17 @@
      * @returns {Boolean}       Whether or not to include the item
      */
     var filter = function (item, args) {
+        if (args.showOnlyPrimaryNode) {
+            if (item.executionNode !== 'PRIMARY') {
+                return false;
+            }
+        }
+        if (args.filterByStatus && args.filterByStatus !== 'all-statuses') {
+            if (item.runStatus !== args.filterByStatus) {
+                return false;
+            }
+        }
+
         if (args.searchString === '') {
             return true;
         }
@@ -2494,6 +2625,17 @@
         }
 
         return item[args.property].search(filterExp) >= 0;
+    };
+
+    /**
+     * Returns primary node checkbox to original unchecked state
+     */
+    var resetPrimaryNodeCheckbox = function () {
+        var isChecked = $('#summary-filter-primary-node').hasClass('checkbox-checked');
+        if (isChecked) {
+            $('#summary-filter-primary-node').removeClass('checkbox-checked').addClass('checkbox-unchecked');
+        };
+        showOnlyPrimaryNodeProcessors = false;
     };
 
     /**
@@ -2770,7 +2912,9 @@
             // update the search criteria
             data.setFilterArgs({
                 searchString: getFilterText(),
-                property: $('#summary-filter-type').combo('getSelectedOption').value
+                property: $('#summary-filter-type').combo('getSelectedOption').value,
+                filterByStatus: $('#summary-filter-status-dropdown').combo('getSelectedOption').value,
+                showOnlyPrimaryNode: showOnlyPrimaryNodeProcessors
             });
             data.refresh();
         }

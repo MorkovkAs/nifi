@@ -462,17 +462,17 @@ public abstract class AbstractComponentNode implements ComponentNode {
     // Keep setProperty/removeProperty private so that all calls go through setProperties
     private void setProperty(final PropertyDescriptor descriptor, final PropertyConfiguration propertyConfiguration, final Function<PropertyDescriptor, PropertyConfiguration> valueToCompareFunction) {
         // Remove current PropertyDescriptor to force updated instance references
-        properties.remove(descriptor);
+        final PropertyConfiguration removed = properties.remove(descriptor);
 
         final PropertyConfiguration propertyModComparisonValue = valueToCompareFunction.apply(descriptor);
-        final PropertyConfiguration oldConfiguration = properties.put(descriptor, propertyConfiguration);
+        properties.put(descriptor, propertyConfiguration);
         final String effectiveValue = propertyConfiguration.getEffectiveValue(getParameterContext());
 
         // If the property references a Controller Service, we need to register this component & property descriptor as a reference.
         // If it previously referenced a Controller Service, we need to also remove that reference.
         // It is okay if the new & old values are the same - we just unregister the component/descriptor and re-register it.
         if (descriptor.getControllerServiceDefinition() != null) {
-            Optional.ofNullable(oldConfiguration)
+            Optional.ofNullable(removed)
                 .map(_oldConfiguration -> _oldConfiguration.getEffectiveValue(getParameterContext()))
                 .map(oldEffectiveValue -> serviceProvider.getControllerServiceNode(oldEffectiveValue))
                 .ifPresent(oldNode -> oldNode.removeReference(this, descriptor));
@@ -580,11 +580,15 @@ public abstract class AbstractComponentNode implements ComponentNode {
             final Map<PropertyDescriptor, String> props = new LinkedHashMap<>();
             for (final PropertyDescriptor descriptor : supported) {
                 if (descriptor != null) {
-                    props.put(descriptor, descriptor.getDefaultValue());
+                    final PropertyDescriptor upToDateDescriptor = getPropertyDescriptor(descriptor.getName());
+                    props.put(upToDateDescriptor, upToDateDescriptor.getDefaultValue());
                 }
             }
 
-            properties.forEach((descriptor, config) -> props.put(getPropertyDescriptor(descriptor.getName()), valueFunction.apply(descriptor, config)));
+            properties.forEach((descriptor, config) -> {
+                final PropertyDescriptor upToDateDescriptor = getPropertyDescriptor(descriptor.getName());
+                props.put(upToDateDescriptor, valueFunction.apply(upToDateDescriptor, config));
+            });
             return props;
         }
     }
@@ -705,6 +709,8 @@ public abstract class AbstractComponentNode implements ComponentNode {
     public String toString() {
         try (final NarCloseable narCloseable = NarCloseable.withComponentNarLoader(extensionManager, getComponent().getClass(), getComponent().getIdentifier())) {
             return getComponent().toString();
+        } catch (final Throwable t) {
+            return getClass().getSimpleName() + "[id=" + getIdentifier() + "]";
         }
     }
 
@@ -754,6 +760,8 @@ public abstract class AbstractComponentNode implements ComponentNode {
             }
 
             final List<ValidationResult> invalidParameterResults = validateParameterReferences(validationContext);
+            invalidParameterResults.addAll(validateConfig());
+
             if (!invalidParameterResults.isEmpty()) {
                 // At this point, we are not able to properly resolve all property values, so we will not attempt to perform
                 // any further validation. Doing so would result in values being reported as invalid and containing confusing explanations.
@@ -792,6 +800,16 @@ public abstract class AbstractComponentNode implements ComponentNode {
             .explanation("Failed to perform validation due to " + failureCause)
             .build());
     }
+
+    /**
+     * Validates the current configuration, returning ValidationResults for any
+     * invalid configuration parameter.
+     *
+     * @return Collection of validation result objects for any invalid findings
+     *         only. If the collection is empty then the component is valid. Should guarantee
+     *         non-null
+     */
+    protected abstract List<ValidationResult> validateConfig();
 
     private List<ValidationResult> validateParameterReferences(final ValidationContext validationContext) {
         final List<ValidationResult> results = new ArrayList<>();
@@ -1040,6 +1058,15 @@ public abstract class AbstractComponentNode implements ComponentNode {
         // For any Property that references an updated Parameter, we need to call onPropertyModified().
         // Additionally, we need to trigger validation to run if this component is affected by the parameter update.
         boolean componentAffected = false;
+
+        //Determine if the component is affected by the Parameter Update
+        for (final String updatedParameterName : updatedParameters.keySet()) {
+            if (isReferencingParameter(updatedParameterName)) {
+                componentAffected = true;
+                break;
+            }
+        }
+
         for (final Map.Entry<PropertyDescriptor, PropertyConfiguration> entry : properties.entrySet()) {
             final PropertyDescriptor propertyDescriptor = entry.getKey();
             final PropertyConfiguration configuration = entry.getValue();
@@ -1051,7 +1078,6 @@ public abstract class AbstractComponentNode implements ComponentNode {
                 final String referencedParamName = reference.getParameterName();
                 if (updatedParameters.containsKey(referencedParamName)) {
                     propertyAffected = true;
-                    componentAffected = true;
                     break;
                 }
             }
@@ -1086,6 +1112,14 @@ public abstract class AbstractComponentNode implements ComponentNode {
         }
     }
 
+    protected void incrementReferenceCounts(final String parameterName) {
+        parameterReferenceCounts.merge(parameterName, 1, (a, b) -> a == -1 ? null : a + b);
+    }
+
+    protected void decrementReferenceCounts(final String parameterName) {
+        parameterReferenceCounts.merge(parameterName, -1, (a, b) -> a == 1 ? null : a + b);
+    }
+
     private ParameterLookup createParameterLookupForPreviousValues(final Map<String, ParameterUpdate> updatedParameters) {
         final ParameterContext currentContext = getParameterContext();
         return new ParameterLookup() {
@@ -1101,17 +1135,21 @@ public abstract class AbstractComponentNode implements ComponentNode {
 
                 // There is an update to the parameter. We want to return the previous value of the Parameter.
                 final ParameterDescriptor parameterDescriptor;
+                final boolean isProvided;
                 if (optionalParameter.isPresent()) {
-                    parameterDescriptor = optionalParameter.get().getDescriptor();
+                    final Parameter previousParameter = optionalParameter.get();
+                    parameterDescriptor = previousParameter.getDescriptor();
+                    isProvided = previousParameter.isProvided();
                 } else {
                     parameterDescriptor = new ParameterDescriptor.Builder()
                         .name(parameterName)
                         .description("")
                         .sensitive(true)
                         .build();
+                    isProvided = false;
                 }
 
-                final Parameter updatedParameter = new Parameter(parameterDescriptor, parameterUpdate.getPreviousValue());
+                final Parameter updatedParameter = new Parameter(parameterDescriptor, parameterUpdate.getPreviousValue(), null, isProvided);
                 return Optional.of(updatedParameter);
             }
 
@@ -1350,4 +1388,9 @@ public abstract class AbstractComponentNode implements ComponentNode {
     }
 
     protected abstract ParameterContext getParameterContext();
+
+    @Override
+    public boolean isReferencingParameter(final String parameterName) {
+        return parameterReferenceCounts.containsKey(parameterName);
+    }
 }

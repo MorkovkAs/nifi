@@ -49,6 +49,7 @@ import org.apache.nifi.nar.NarClassLoadersHolder;
 import org.apache.nifi.nar.NarLoader;
 import org.apache.nifi.nar.NarProvider;
 import org.apache.nifi.nar.NarThreadContextClassLoader;
+import org.apache.nifi.nar.NarUnpackMode;
 import org.apache.nifi.nar.StandardExtensionDiscoveringManager;
 import org.apache.nifi.nar.StandardNarLoader;
 import org.apache.nifi.security.util.TlsException;
@@ -135,6 +136,8 @@ public class JettyServer implements NiFiServer, ExtensionUiLoader {
 
     private static final String CONTAINER_INCLUDE_PATTERN_KEY = "org.eclipse.jetty.server.webapp.ContainerIncludeJarPattern";
     private static final String CONTAINER_INCLUDE_PATTERN_VALUE = ".*/[^/]*servlet-api-[^/]*\\.jar$|.*/javax.servlet.jsp.jstl-.*\\\\.jar$|.*/[^/]*taglibs.*\\.jar$";
+
+    private static final String ALLOWED_CONTEXT_PATHS_PARAMETER = "allowedContextPaths";
 
     private static final String CONTEXT_PATH_ALL = "/*";
     private static final String CONTEXT_PATH_ROOT = "/";
@@ -295,7 +298,6 @@ public class JettyServer implements NiFiServer, ExtensionUiLoader {
         webUiContext.getInitParams().put("knox-supported", String.valueOf(props.isKnoxSsoEnabled()));
         webUiContext.getInitParams().put("saml-supported", String.valueOf(props.isSamlEnabled()));
         webUiContext.getInitParams().put("saml-single-logout-supported", String.valueOf(props.isSamlSingleLogoutEnabled()));
-        webUiContext.getInitParams().put("allowedContextPaths", props.getAllowedContextPaths());
         webAppContextHandlers.addHandler(webUiContext);
 
         // load the web api app
@@ -317,7 +319,6 @@ public class JettyServer implements NiFiServer, ExtensionUiLoader {
 
         // load the web error app
         final WebAppContext webErrorContext = loadWar(webErrorWar, CONTEXT_PATH_ROOT, frameworkClassLoader);
-        webErrorContext.getInitParams().put("allowedContextPaths", props.getAllowedContextPaths());
         webAppContextHandlers.addHandler(webErrorContext);
 
         // deploy the web apps
@@ -562,6 +563,8 @@ public class JettyServer implements NiFiServer, ExtensionUiLoader {
             readUiExtensions(uiExtensions, UiExtensionType.ProcessorConfiguration, jarFile, jarFile.getJarEntry("META-INF/nifi-processor-configuration"));
             readUiExtensions(uiExtensions, UiExtensionType.ControllerServiceConfiguration, jarFile, jarFile.getJarEntry("META-INF/nifi-controller-service-configuration"));
             readUiExtensions(uiExtensions, UiExtensionType.ReportingTaskConfiguration, jarFile, jarFile.getJarEntry("META-INF/nifi-reporting-task-configuration"));
+            readUiExtensions(uiExtensions, UiExtensionType.ParameterProviderConfiguration, jarFile, jarFile.getJarEntry("META-INF/nifi-parameter-provider-configuration"));
+            readUiExtensions(uiExtensions, UiExtensionType.FlowRegistryClientConfiguration, jarFile, jarFile.getJarEntry("META-INF/nifi-flow-registry-client-configuration"));
         } catch (IOException ioe) {
             logger.warn(String.format("Unable to inspect %s for a UI extensions.", warFile));
         }
@@ -585,6 +588,7 @@ public class JettyServer implements NiFiServer, ExtensionUiLoader {
 
     private WebAppContext loadWar(final File warFile, final String contextPath, final ClassLoader parentClassLoader) {
         final WebAppContext webappContext = new WebAppContext(warFile.getPath(), contextPath);
+        webappContext.getInitParams().put(ALLOWED_CONTEXT_PATHS_PARAMETER, props.getAllowedContextPaths());
         webappContext.setContextPath(contextPath);
         webappContext.setDisplayName(contextPath);
 
@@ -784,25 +788,29 @@ public class JettyServer implements NiFiServer, ExtensionUiLoader {
             DocGenerator.generate(props, extensionManager, extensionMapping);
 
             // Additionally loaded NARs and collected flow resources must be in place before starting the flows
+            narProviderService = new ExternalResourceProviderServiceBuilder("NAR Auto-Loader Provider", extensionManager)
+                    .providers(buildExternalResourceProviders(extensionManager, NAR_PROVIDER_PREFIX, descriptor -> descriptor.getLocation().toLowerCase().endsWith(".nar")))
+                    .targetDirectory(new File(props.getProperty(NiFiProperties.NAR_LIBRARY_AUTOLOAD_DIRECTORY, NiFiProperties.DEFAULT_NAR_LIBRARY_AUTOLOAD_DIR)))
+                    .conflictResolutionStrategy(props.getProperty(NAR_PROVIDER_CONFLICT_RESOLUTION, DEFAULT_NAR_PROVIDER_CONFLICT_RESOLUTION))
+                    .pollInterval(props.getProperty(NAR_PROVIDER_POLL_INTERVAL_PROPERTY, DEFAULT_NAR_PROVIDER_POLL_INTERVAL))
+                    .restrainingStartup(Boolean.valueOf(props.getProperty(NAR_PROVIDER_RESTRAIN_PROPERTY, "true")))
+                    .build();
+            narProviderService.start();
+
+            // The NarAutoLoader must be started after the provider has started because we don't want the loader to load anything
+            // until all provided NARs are available, in case there is a dependency between any of the provided NARs
+            final NarUnpackMode unpackMode = props.isUnpackNarsToUberJar() ? NarUnpackMode.UNPACK_TO_UBER_JAR : NarUnpackMode.UNPACK_INDIVIDUAL_JARS;
             final NarLoader narLoader = new StandardNarLoader(
                     props.getExtensionsWorkingDirectory(),
                     props.getComponentDocumentationWorkingDirectory(),
                     NarClassLoadersHolder.getInstance(),
                     extensionManager,
                     extensionMapping,
-                    this);
+                    this,
+                    unpackMode);
 
             narAutoLoader = new NarAutoLoader(props, narLoader);
             narAutoLoader.start();
-
-            narProviderService = new ExternalResourceProviderServiceBuilder("NAR Auto-Loader Provider", extensionManager)
-                    .providers(buildExternalResourceProviders(extensionManager, NAR_PROVIDER_PREFIX, descriptor -> descriptor.getLocation().toLowerCase().endsWith(".nar")))
-                    .targetDirectory(new File(props.getProperty(NiFiProperties.NAR_LIBRARY_AUTOLOAD_DIRECTORY, NiFiProperties.DEFAULT_NAR_LIBRARY_AUTOLOAD_DIR)))
-                    .conflictResolutionStrategy(props.getProperty(NAR_PROVIDER_CONFLICT_RESOLUTION, DEFAULT_NAR_PROVIDER_CONFLICT_RESOLUTION))
-                    .pollInterval(props.getProperty(NAR_PROVIDER_POLL_INTERVAL_PROPERTY, DEFAULT_NAR_PROVIDER_POLL_INTERVAL))
-                    .restrainingStartup(Boolean.getBoolean(props.getProperty(NAR_PROVIDER_RESTRAIN_PROPERTY, "true")))
-                    .build();
-            narProviderService.start();
 
             // start the server
             server.start();

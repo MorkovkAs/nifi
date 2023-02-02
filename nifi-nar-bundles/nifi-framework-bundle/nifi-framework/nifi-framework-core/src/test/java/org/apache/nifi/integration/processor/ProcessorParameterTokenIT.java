@@ -33,8 +33,7 @@ import org.apache.nifi.processor.ProcessSession;
 import org.apache.nifi.processor.Processor;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.exception.ProcessException;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -47,7 +46,8 @@ import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 
 import static org.apache.nifi.processor.util.StandardValidators.NON_EMPTY_VALIDATOR;
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class ProcessorParameterTokenIT extends FrameworkIntegrationTest {
 
@@ -67,13 +67,12 @@ public class ProcessorParameterTokenIT extends FrameworkIntegrationTest {
         verifyText(procNode, "## hello ##{foo} ##{bar}", "## hello #{foo} #{bar}");
     }
 
-
     @Test
     public void testProperReferences() throws ExecutionException, InterruptedException {
         final ProcessorNode procNode = createProcessorNode(WriteText.class);
         procNode.setAutoTerminatedRelationships(Collections.singleton(REL_SUCCESS));
 
-        final ParameterContext parameterContext = new StandardParameterContext(UUID.randomUUID().toString(), "testEscapedParameterReference", ParameterReferenceManager.EMPTY, null);
+        final ParameterContext parameterContext = createParameterContext("testEscapedParameterReference");
         getRootGroup().setParameterContext(parameterContext);
 
         final Map<String, Parameter> parameters = new HashMap<>();
@@ -103,7 +102,7 @@ public class ProcessorParameterTokenIT extends FrameworkIntegrationTest {
         final ProcessorNode procNode = createProcessorNode(WriteText.class);
         procNode.setAutoTerminatedRelationships(Collections.singleton(REL_SUCCESS));
 
-        final ParameterContext parameterContext = new StandardParameterContext(UUID.randomUUID().toString(), "testEscapedParameterReference", ParameterReferenceManager.EMPTY, null);
+        final ParameterContext parameterContext = createParameterContext("testEscapedParameterReference");
         getRootGroup().setParameterContext(parameterContext);
 
         final Map<String, Parameter> parameters = new HashMap<>();
@@ -128,11 +127,8 @@ public class ProcessorParameterTokenIT extends FrameworkIntegrationTest {
         properties.put(WriteText.TEXT.getName(), text);
         properties.put(WriteText.PASSWORD.getName(), password);
 
-        try {
-            procNode.setProperties(properties);
-            Assert.fail("Expected to fail when setting properties to " + properties);
-        } catch (final IllegalArgumentException expected) {
-        }
+        assertThrows(IllegalArgumentException.class, () -> procNode.setProperties(properties),
+                "Expected to fail when setting properties to " + properties);
     }
 
     private void verifyText(final ProcessorNode procNode, final String text, final String expectedOutput) throws ExecutionException, InterruptedException {
@@ -206,5 +202,13 @@ public class ProcessorParameterTokenIT extends FrameworkIntegrationTest {
         private String getTextLastWritten() {
             return textLastWritten;
         }
+    }
+
+    private ParameterContext createParameterContext(final String name) {
+        return new StandardParameterContext.Builder()
+                .id(UUID.randomUUID().toString())
+                .name(name)
+                .parameterReferenceManager(ParameterReferenceManager.EMPTY)
+                .build();
     }
 }

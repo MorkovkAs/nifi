@@ -98,8 +98,8 @@ public abstract class AbstractFlowFileQueue implements FlowFileQueue {
     }
 
     @Override
-    public int getFlowFileExpiration(final TimeUnit timeUnit) {
-        return (int) timeUnit.convert(expirationPeriod.get().getMillis(), TimeUnit.MILLISECONDS);
+    public long getFlowFileExpiration(final TimeUnit timeUnit) {
+        return timeUnit.convert(expirationPeriod.get().getMillis(), TimeUnit.MILLISECONDS);
     }
 
     @Override
@@ -499,5 +499,10 @@ public abstract class AbstractFlowFileQueue implements FlowFileQueue {
     @Override
     public List<FlowFileRecord> poll(FlowFileFilter filter, Set<FlowFileRecord> expiredRecords) {
         return poll(filter, expiredRecords, PollStrategy.UNPENALIZED_FLOWFILES);
+    }
+
+    @Override
+    public int hashCode() {
+        return identifier.hashCode();
     }
 }

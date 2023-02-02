@@ -43,7 +43,9 @@ import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.processor.util.pattern.RollbackOnFailure;
+import org.apache.nifi.processors.standard.db.ColumnDescription;
 import org.apache.nifi.processors.standard.db.DatabaseAdapter;
+import org.apache.nifi.processors.standard.db.TableSchema;
 import org.apache.nifi.record.path.FieldValue;
 import org.apache.nifi.record.path.RecordPath;
 import org.apache.nifi.record.path.RecordPathResult;
@@ -68,8 +70,6 @@ import java.sql.Clob;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
 import java.sql.SQLDataException;
 import java.sql.SQLException;
 import java.sql.SQLIntegrityConstraintViolationException;
@@ -81,9 +81,9 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -419,6 +419,7 @@ public class PutDatabaseRecord extends AbstractProcessor {
         return propDescriptors;
     }
 
+    // TODO remove this at next major release as dynamic properties are not used by this processor
     @Override
     protected PropertyDescriptor getSupportedDynamicPropertyDescriptor(final String propertyDescriptorName) {
         return new Builder()
@@ -479,10 +480,13 @@ public class PutDatabaseRecord extends AbstractProcessor {
         }
 
         final DBCPService dbcpService = context.getProperty(DBCP_SERVICE).asControllerService(DBCPService.class);
-        final Connection connection = dbcpService.getConnection(flowFile.getAttributes());
+        Optional<Connection> connectionHolder = Optional.empty();
 
         boolean originalAutoCommit = false;
         try {
+            final Connection connection = dbcpService.getConnection(flowFile.getAttributes());
+            connectionHolder = Optional.of(connection);
+
             originalAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
 
@@ -513,25 +517,31 @@ public class PutDatabaseRecord extends AbstractProcessor {
                 session.transfer(flowFile, relationship);
             }
 
-            try {
-                connection.rollback();
-            } catch (final Exception e1) {
-                getLogger().error("Failed to rollback JDBC transaction", e1);
-            }
+            connectionHolder.ifPresent(connection -> {
+                try {
+                    connection.rollback();
+                } catch (final Exception rollbackException) {
+                    getLogger().error("Failed to rollback JDBC transaction", rollbackException);
+                }
+            });
         } finally {
             if (originalAutoCommit) {
-                try {
-                    connection.setAutoCommit(true);
-                } catch (final Exception e) {
-                    getLogger().warn("Failed to set auto-commit back to true on connection {} after finishing update", connection);
-                }
+                connectionHolder.ifPresent(connection -> {
+                    try {
+                        connection.setAutoCommit(true);
+                    } catch (final Exception autoCommitException) {
+                        getLogger().warn("Failed to set auto-commit back to true on connection", autoCommitException);
+                    }
+                });
             }
 
-            try {
-                connection.close();
-            } catch (final Exception e) {
-                getLogger().warn("Failed to close database connection", e);
-            }
+            connectionHolder.ifPresent(connection -> {
+                try {
+                    connection.close();
+                } catch (final Exception closeException) {
+                    getLogger().warn("Failed to close database connection", closeException);
+                }
+            });
         }
     }
 
@@ -667,6 +677,8 @@ public class PutDatabaseRecord extends AbstractProcessor {
                             throw new IllegalArgumentException(format("Statement Type %s is not valid, FlowFile %s", statementType, flowFile));
                         }
 
+                        // Log debug sqlHolder
+                        log.debug("Generated SQL: {}", sqlHolder.getSql());
                         // Create the Prepared Statement
                         final PreparedStatement preparedStatement = con.prepareStatement(sqlHolder.getSql());
 
@@ -710,7 +722,7 @@ public class PutDatabaseRecord extends AbstractProcessor {
                         final DataType dataType = dataTypes.get(currentFieldIndex);
                         final int fieldSqlType = DataTypeUtils.getSQLTypeValue(dataType);
                         final String fieldName = recordSchema.getField(currentFieldIndex).getFieldName();
-                        String columnName = normalizeColumnName(fieldName, settings.translateFieldNames);
+                        String columnName = ColumnDescription.normalizeColumnName(fieldName, settings.translateFieldNames);
                         int sqlType;
 
                         final ColumnDescription column = columns.get(columnName);
@@ -723,13 +735,21 @@ public class PutDatabaseRecord extends AbstractProcessor {
                                 sqlType = fieldSqlType;
                             }
                         } else {
-                            sqlType = column.dataType;
+                            sqlType = column.getDataType();
+                            // SQLServer returns -150 for sql_variant from DatabaseMetaData though the server expects -156 when setting a sql_variant parameter
+                            if (sqlType == -150) {
+                                sqlType = -156;
+                            }
                         }
 
                         // Convert (if necessary) from field data type to column data type
                         if (fieldSqlType != sqlType) {
                             try {
                                 DataType targetDataType = DataTypeUtils.getDataTypeFromSQLTypeValue(sqlType);
+                                // If sqlType is unsupported, fall back to the fieldSqlType instead
+                                if (targetDataType == null) {
+                                    targetDataType = DataTypeUtils.getDataTypeFromSQLTypeValue(fieldSqlType);
+                                }
                                 if (targetDataType != null) {
                                     if (sqlType == Types.BLOB || sqlType == Types.BINARY) {
                                         if (currentValue instanceof Object[]) {
@@ -767,7 +787,7 @@ public class PutDatabaseRecord extends AbstractProcessor {
                         // If DELETE type, insert the object twice if the column is nullable because of the null check (see generateDelete for details)
                         if (DELETE_TYPE.equalsIgnoreCase(statementType)) {
                             setParameter(ps, ++deleteIndex, currentValue, fieldSqlType, sqlType);
-                            if (column.isNullable()) {
+                            if (column != null && column.isNullable()) {
                                 setParameter(ps, ++deleteIndex, currentValue, fieldSqlType, sqlType);
                             }
                         } else if (UPSERT_TYPE.equalsIgnoreCase(statementType)) {
@@ -851,7 +871,19 @@ public class PutDatabaseRecord extends AbstractProcessor {
             }
         } else {
             try {
-                ps.setObject(index, value, sqlType);
+                // If the specified field type is OTHER and the SQL type is VARCHAR, the conversion went ok as a string literal but try the OTHER type when setting the parameter. If an error occurs,
+                // try the normal way of using the sqlType
+                // This helps with PostgreSQL enums and possibly other scenarios
+                if (fieldSqlType == Types.OTHER && sqlType == Types.VARCHAR) {
+                    try {
+                        ps.setObject(index, value, fieldSqlType);
+                    } catch (SQLException e) {
+                        // Fall back to default setObject params
+                        ps.setObject(index, value, sqlType);
+                    }
+                } else {
+                    ps.setObject(index, value, sqlType);
+                }
             } catch (SQLException e) {
                 throw new IOException("Unable to setObject() with value " + value + " at index " + index + " of type " + sqlType , e);
             }
@@ -940,7 +972,7 @@ public class PutDatabaseRecord extends AbstractProcessor {
         }
     }
 
-    private String generateTableName(final DMLSettings settings, final String catalog, final String schemaName, final String tableName, final TableSchema tableSchema) {
+    String generateTableName(final DMLSettings settings, final String catalog, final String schemaName, final String tableName, final TableSchema tableSchema) {
         final StringBuilder tableNameBuilder = new StringBuilder();
         if (catalog != null) {
             if (settings.quoteTableName) {
@@ -980,7 +1012,7 @@ public class PutDatabaseRecord extends AbstractProcessor {
     private Set<String> getNormalizedColumnNames(final RecordSchema schema, final boolean translateFieldNames) {
         final Set<String> normalizedFieldNames = new HashSet<>();
         if (schema != null) {
-            schema.getFieldNames().forEach((fieldName) -> normalizedFieldNames.add(normalizeColumnName(fieldName, translateFieldNames)));
+            schema.getFieldNames().forEach((fieldName) -> normalizedFieldNames.add(ColumnDescription.normalizeColumnName(fieldName, translateFieldNames)));
         }
         return normalizedFieldNames;
     }
@@ -1006,7 +1038,7 @@ public class PutDatabaseRecord extends AbstractProcessor {
                 RecordField field = recordSchema.getField(i);
                 String fieldName = field.getFieldName();
 
-                final ColumnDescription desc = tableSchema.getColumns().get(normalizeColumnName(fieldName, settings.translateFieldNames));
+                final ColumnDescription desc = tableSchema.getColumns().get(ColumnDescription.normalizeColumnName(fieldName, settings.translateFieldNames));
                 if (desc == null && !settings.ignoreUnmappedFields) {
                     throw new SQLDataException("Cannot map field '" + fieldName + "' to any column in the database\n"
                             + (settings.translateFieldNames ? "Normalized " : "") + "Columns: " + String.join(",", tableSchema.getColumns().keySet()));
@@ -1065,7 +1097,7 @@ public class PutDatabaseRecord extends AbstractProcessor {
                 RecordField field = recordSchema.getField(i);
                 String fieldName = field.getFieldName();
 
-                final ColumnDescription desc = tableSchema.getColumns().get(normalizeColumnName(fieldName, settings.translateFieldNames));
+                final ColumnDescription desc = tableSchema.getColumns().get(ColumnDescription.normalizeColumnName(fieldName, settings.translateFieldNames));
                 if (desc == null && !settings.ignoreUnmappedFields) {
                     throw new SQLDataException("Cannot map field '" + fieldName + "' to any column in the database\n"
                             + (settings.translateFieldNames ? "Normalized " : "") + "Columns: " + String.join(",", tableSchema.getColumns().keySet()));
@@ -1111,7 +1143,7 @@ public class PutDatabaseRecord extends AbstractProcessor {
                 RecordField field = recordSchema.getField(i);
                 String fieldName = field.getFieldName();
 
-                final ColumnDescription desc = tableSchema.getColumns().get(normalizeColumnName(fieldName, settings.translateFieldNames));
+                final ColumnDescription desc = tableSchema.getColumns().get(ColumnDescription.normalizeColumnName(fieldName, settings.translateFieldNames));
                 if (desc == null && !settings.ignoreUnmappedFields) {
                     throw new SQLDataException("Cannot map field '" + fieldName + "' to any column in the database\n"
                             + (settings.translateFieldNames ? "Normalized " : "") + "Columns: " + String.join(",", tableSchema.getColumns().keySet()));
@@ -1141,7 +1173,6 @@ public class PutDatabaseRecord extends AbstractProcessor {
                                          final TableSchema tableSchema, final DMLSettings settings)
             throws IllegalArgumentException, MalformedRecordException, SQLException {
 
-
         final Set<String> keyColumnNames = getUpdateKeyColumnNames(tableName, updateKeys, tableSchema);
         final Set<String> normalizedKeyColumnNames = normalizeKeyColumnNamesAndCheckForValues(recordSchema, updateKeys, settings, keyColumnNames, tableSchema.getQuotedIdentifierString());
 
@@ -1149,7 +1180,7 @@ public class PutDatabaseRecord extends AbstractProcessor {
         sqlBuilder.append("UPDATE ");
         sqlBuilder.append(tableName);
 
-        // iterate over all of the fields in the record, building the SQL statement by adding the column names
+        // iterate over all the fields in the record, building the SQL statement by adding the column names
         List<String> fieldNames = recordSchema.getFieldNames();
         final List<Integer> includedColumns = new ArrayList<>();
         if (fieldNames != null) {
@@ -1162,8 +1193,8 @@ public class PutDatabaseRecord extends AbstractProcessor {
                 RecordField field = recordSchema.getField(i);
                 String fieldName = field.getFieldName();
 
-                final String normalizedColName = normalizeColumnName(fieldName, settings.translateFieldNames);
-                final ColumnDescription desc = tableSchema.getColumns().get(normalizeColumnName(fieldName, settings.translateFieldNames));
+                final String normalizedColName = ColumnDescription.normalizeColumnName(fieldName, settings.translateFieldNames);
+                final ColumnDescription desc = tableSchema.getColumns().get(ColumnDescription.normalizeColumnName(fieldName, settings.translateFieldNames));
                 if (desc == null) {
                     if (!settings.ignoreUnmappedFields) {
                         throw new SQLDataException("Cannot map field '" + fieldName + "' to any column in the database\n"
@@ -1200,9 +1231,10 @@ public class PutDatabaseRecord extends AbstractProcessor {
             for (int i = 0; i < fieldCount; i++) {
                 RecordField field = recordSchema.getField(i);
                 String fieldName = field.getFieldName();
+                boolean firstUpdateKey = true;
 
-                final String normalizedColName = normalizeColumnName(fieldName, settings.translateFieldNames);
-                final ColumnDescription desc = tableSchema.getColumns().get(normalizeColumnName(fieldName, settings.translateFieldNames));
+                final String normalizedColName = ColumnDescription.normalizeColumnName(fieldName, settings.translateFieldNames);
+                final ColumnDescription desc = tableSchema.getColumns().get(ColumnDescription.normalizeColumnName(fieldName, settings.translateFieldNames));
                 if (desc != null) {
 
                     // Check if this column is a Update Key. If so, add it to the WHERE clause
@@ -1210,9 +1242,10 @@ public class PutDatabaseRecord extends AbstractProcessor {
 
                         if (whereFieldCount.getAndIncrement() > 0) {
                             sqlBuilder.append(" AND ");
-                        } else if (i == 0) {
+                        } else if (firstUpdateKey) {
                             // Set the WHERE clause based on the Update Key values
                             sqlBuilder.append(" WHERE ");
+                            firstUpdateKey = false;
                         }
 
                         if (settings.escapeColumnNames) {
@@ -1236,7 +1269,7 @@ public class PutDatabaseRecord extends AbstractProcessor {
 
         final Set<String> normalizedFieldNames = getNormalizedColumnNames(recordSchema, settings.translateFieldNames);
         for (final String requiredColName : tableSchema.getRequiredColumnNames()) {
-            final String normalizedColName = normalizeColumnName(requiredColName, settings.translateFieldNames);
+            final String normalizedColName = ColumnDescription.normalizeColumnName(requiredColName, settings.translateFieldNames);
             if (!normalizedFieldNames.contains(normalizedColName)) {
                 String missingColMessage = "Record does not have a value for the Required column '" + requiredColName + "'";
                 if (settings.failUnmappedColumns) {
@@ -1265,7 +1298,7 @@ public class PutDatabaseRecord extends AbstractProcessor {
                 RecordField field = recordSchema.getField(i);
                 String fieldName = field.getFieldName();
 
-                final ColumnDescription desc = tableSchema.getColumns().get(normalizeColumnName(fieldName, settings.translateFieldNames));
+                final ColumnDescription desc = tableSchema.getColumns().get(ColumnDescription.normalizeColumnName(fieldName, settings.translateFieldNames));
                 if (desc == null && !settings.ignoreUnmappedFields) {
                     throw new SQLDataException("Cannot map field '" + fieldName + "' to any column in the database\n"
                             + (settings.translateFieldNames ? "Normalized " : "") + "Columns: " + String.join(",", tableSchema.getColumns().keySet()));
@@ -1318,7 +1351,7 @@ public class PutDatabaseRecord extends AbstractProcessor {
         final Set<String> normalizedFieldNames = getNormalizedColumnNames(recordSchema, settings.translateFieldNames);
 
         for (final String requiredColName : tableSchema.getRequiredColumnNames()) {
-            final String normalizedColName = normalizeColumnName(requiredColName, settings.translateFieldNames);
+            final String normalizedColName = ColumnDescription.normalizeColumnName(requiredColName, settings.translateFieldNames);
             if (!normalizedFieldNames.contains(normalizedColName)) {
                 String missingColMessage = "Record does not have a value for the Required column '" + requiredColName + "'";
                 if (settings.failUnmappedColumns) {
@@ -1358,7 +1391,7 @@ public class PutDatabaseRecord extends AbstractProcessor {
 
         final Set<String> normalizedKeyColumnNames = new HashSet<>();
         for (final String updateKeyColumnName : updateKeyColumnNames) {
-            String normalizedKeyColumnName = normalizeColumnName(updateKeyColumnName, settings.translateFieldNames);
+            String normalizedKeyColumnName = ColumnDescription.normalizeColumnName(updateKeyColumnName, settings.translateFieldNames);
 
             if (!normalizedRecordFieldNames.contains(normalizedKeyColumnName)) {
                 String missingColMessage = "Record does not have a value for the " + (updateKeys == null ? "Primary" : "Update") + "Key column '" + updateKeyColumnName + "'";
@@ -1373,181 +1406,6 @@ public class PutDatabaseRecord extends AbstractProcessor {
         }
 
         return normalizedKeyColumnNames;
-    }
-
-    private static String normalizeColumnName(final String colName, final boolean translateColumnNames) {
-        return colName == null ? null : (translateColumnNames ? colName.toUpperCase().replace("_", "") : colName);
-    }
-
-    static class TableSchema {
-        private List<String> requiredColumnNames;
-        private Set<String> primaryKeyColumnNames;
-        private Map<String, ColumnDescription> columns;
-        private String quotedIdentifierString;
-
-        private TableSchema(final List<ColumnDescription> columnDescriptions, final boolean translateColumnNames,
-                            final Set<String> primaryKeyColumnNames, final String quotedIdentifierString) {
-            this.columns = new LinkedHashMap<>();
-            this.primaryKeyColumnNames = primaryKeyColumnNames;
-            this.quotedIdentifierString = quotedIdentifierString;
-
-            this.requiredColumnNames = new ArrayList<>();
-            for (final ColumnDescription desc : columnDescriptions) {
-                columns.put(normalizeColumnName(desc.columnName, translateColumnNames), desc);
-                if (desc.isRequired()) {
-                    requiredColumnNames.add(desc.columnName);
-                }
-            }
-        }
-
-        public Map<String, ColumnDescription> getColumns() {
-            return columns;
-        }
-
-        public List<ColumnDescription> getColumnsAsList() {
-            return new ArrayList<>(columns.values());
-        }
-
-        public List<String> getRequiredColumnNames() {
-            return requiredColumnNames;
-        }
-
-        public Set<String> getPrimaryKeyColumnNames() {
-            return primaryKeyColumnNames;
-        }
-
-        public String getQuotedIdentifierString() {
-            return quotedIdentifierString;
-        }
-
-        public static TableSchema from(final Connection conn, final String catalog, final String schema, final String tableName,
-                                       final boolean translateColumnNames, final String updateKeys, ComponentLog log) throws SQLException {
-            final DatabaseMetaData dmd = conn.getMetaData();
-
-            try (final ResultSet colrs = dmd.getColumns(catalog, schema, tableName, "%")) {
-                final List<ColumnDescription> cols = new ArrayList<>();
-                while (colrs.next()) {
-                    final ColumnDescription col = ColumnDescription.from(colrs);
-                    cols.add(col);
-                }
-                // If no columns are found, check that the table exists
-                if (cols.isEmpty()) {
-                    try (final ResultSet tblrs = dmd.getTables(catalog, schema, tableName, null)) {
-                        List<String> qualifiedNameSegments = new ArrayList<>();
-                        if (catalog != null) {
-                            qualifiedNameSegments.add(catalog);
-                        }
-                        if (schema != null) {
-                            qualifiedNameSegments.add(schema);
-                        }
-                        if (tableName != null) {
-                            qualifiedNameSegments.add(tableName);
-                        }
-                        if (!tblrs.next()) {
-
-                            throw new SQLException("Table "
-                                    + String.join(".", qualifiedNameSegments)
-                                    + " not found, ensure the Catalog, Schema, and/or Table Names match those in the database exactly");
-                        } else {
-                            log.warn("Table "
-                                    + String.join(".", qualifiedNameSegments)
-                                    + " found but no columns were found, if this is not expected then check the user permissions for getting table metadata from the database");
-                        }
-                    }
-                }
-
-                final Set<String> primaryKeyColumns = new HashSet<>();
-                if (updateKeys == null) {
-                    try (final ResultSet pkrs = dmd.getPrimaryKeys(catalog, schema, tableName)) {
-
-                        while (pkrs.next()) {
-                            final String colName = pkrs.getString("COLUMN_NAME");
-                            primaryKeyColumns.add(normalizeColumnName(colName, translateColumnNames));
-                        }
-                    }
-                } else {
-                    // Parse the Update Keys field and normalize the column names
-                    for (final String updateKey : updateKeys.split(",")) {
-                        primaryKeyColumns.add(normalizeColumnName(updateKey.trim(), translateColumnNames));
-                    }
-                }
-
-                return new TableSchema(cols, translateColumnNames, primaryKeyColumns, dmd.getIdentifierQuoteString());
-            }
-        }
-
-        @Override
-        public String toString() {
-            return "TableSchema[columns=" + columns.values() + "]";
-        }
-    }
-
-    protected static class ColumnDescription {
-        private final String columnName;
-        private final int dataType;
-        private final boolean required;
-        private final Integer columnSize;
-        private final boolean nullable;
-
-        public ColumnDescription(final String columnName, final int dataType, final boolean required, final Integer columnSize, final boolean nullable) {
-            this.columnName = columnName;
-            this.dataType = dataType;
-            this.required = required;
-            this.columnSize = columnSize;
-            this.nullable = nullable;
-        }
-
-        public int getDataType() {
-            return dataType;
-        }
-
-        public Integer getColumnSize() {
-            return columnSize;
-        }
-
-        public String getColumnName() {
-            return columnName;
-        }
-
-        public boolean isRequired() {
-            return required;
-        }
-
-        public boolean isNullable() {
-            return nullable;
-        }
-
-        public static ColumnDescription from(final ResultSet resultSet) throws SQLException {
-            final ResultSetMetaData md = resultSet.getMetaData();
-            List<String> columns = new ArrayList<>();
-
-            for (int i = 1; i < md.getColumnCount() + 1; i++) {
-                columns.add(md.getColumnName(i));
-            }
-            // COLUMN_DEF must be read first to work around Oracle bug, see NIFI-4279 for details
-            final String defaultValue = resultSet.getString("COLUMN_DEF");
-            final String columnName = resultSet.getString("COLUMN_NAME");
-            final int dataType = resultSet.getInt("DATA_TYPE");
-            final int colSize = resultSet.getInt("COLUMN_SIZE");
-
-            final String nullableValue = resultSet.getString("IS_NULLABLE");
-            final boolean isNullable = "YES".equalsIgnoreCase(nullableValue) || nullableValue.isEmpty();
-            String autoIncrementValue = "NO";
-
-            if (columns.contains("IS_AUTOINCREMENT")) {
-                autoIncrementValue = resultSet.getString("IS_AUTOINCREMENT");
-            }
-
-            final boolean isAutoIncrement = "YES".equalsIgnoreCase(autoIncrementValue);
-            final boolean required = !isNullable && !isAutoIncrement && defaultValue == null;
-
-            return new ColumnDescription(columnName, dataType, required, colSize == 0 ? null : colSize, isNullable);
-        }
-
-        @Override
-        public String toString() {
-            return "Column[name=" + columnName + ", dataType=" + dataType + ", required=" + required + ", columnSize=" + columnSize + "]";
-        }
     }
 
     static class SchemaKey {
@@ -1674,7 +1532,7 @@ public class PutDatabaseRecord extends AbstractProcessor {
         // Quote table name?
         private final boolean quoteTableName;
 
-        private DMLSettings(ProcessContext context) {
+        DMLSettings(ProcessContext context) {
             translateFieldNames = context.getProperty(TRANSLATE_FIELD_NAMES).asBoolean();
             ignoreUnmappedFields = IGNORE_UNMATCHED_FIELD.getValue().equalsIgnoreCase(context.getProperty(UNMATCHED_FIELD_BEHAVIOR).getValue());
 

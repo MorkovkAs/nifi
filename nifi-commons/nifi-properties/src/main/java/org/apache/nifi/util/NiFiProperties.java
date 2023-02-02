@@ -75,6 +75,7 @@ public class NiFiProperties extends ApplicationProperties {
     public static final String NAR_LIBRARY_DIRECTORY_PREFIX = "nifi.nar.library.directory.";
     public static final String NAR_LIBRARY_AUTOLOAD_DIRECTORY = "nifi.nar.library.autoload.directory";
     public static final String NAR_WORKING_DIRECTORY = "nifi.nar.working.directory";
+    public static final String UNPACK_NARS_TO_UBER_JAR = "nifi.nar.unpack.uber.jar";
     public static final String COMPONENT_DOCS_DIRECTORY = "nifi.documentation.working.directory";
     public static final String SENSITIVE_PROPS_KEY = "nifi.sensitive.props.key";
     public static final String SENSITIVE_PROPS_ALGORITHM = "nifi.sensitive.props.algorithm";
@@ -195,6 +196,7 @@ public class NiFiProperties extends ApplicationProperties {
     public static final String SECURITY_USER_OIDC_PREFERRED_JWSALGORITHM = "nifi.security.user.oidc.preferred.jwsalgorithm";
     public static final String SECURITY_USER_OIDC_ADDITIONAL_SCOPES = "nifi.security.user.oidc.additional.scopes";
     public static final String SECURITY_USER_OIDC_CLAIM_IDENTIFYING_USER = "nifi.security.user.oidc.claim.identifying.user";
+    public static final String NIFI_SECURITY_USER_OIDC_CLAIM_GROUPS = "nifi.security.user.oidc.claim.groups";
     public static final String SECURITY_USER_OIDC_FALLBACK_CLAIMS_IDENTIFYING_USER = "nifi.security.user.oidc.fallback.claims.identifying.user";
 
     // apache knox
@@ -278,6 +280,7 @@ public class NiFiProperties extends ApplicationProperties {
     public static final String ZOOKEEPER_CONNECT_TIMEOUT = "nifi.zookeeper.connect.timeout";
     public static final String ZOOKEEPER_SESSION_TIMEOUT = "nifi.zookeeper.session.timeout";
     public static final String ZOOKEEPER_ROOT_NODE = "nifi.zookeeper.root.node";
+    public static final String ZOOKEEPER_CLIENT_ENSEMBLE_TRACKER = "nifi.zookeeper.client.ensembleTracker";
     public static final String ZOOKEEPER_CLIENT_SECURE = "nifi.zookeeper.client.secure";
     public static final String ZOOKEEPER_SECURITY_KEYSTORE = "nifi.zookeeper.security.keystore";
     public static final String ZOOKEEPER_SECURITY_KEYSTORE_TYPE = "nifi.zookeeper.security.keystoreType";
@@ -332,6 +335,12 @@ public class NiFiProperties extends ApplicationProperties {
     public static final int DEFAULT_DIAGNOSTICS_ON_SHUTDOWN_MAX_FILE_COUNT = 10;
     public static final String DEFAULT_DIAGNOSTICS_ON_SHUTDOWN_MAX_DIRECTORY_SIZE = "10 MB";
 
+    // performance tracking
+    public static final String TRACK_PERFORMANCE_PERCENTAGE = "nifi.performance.tracking.percentage";
+
+    // performance tracking defaults
+    public static final int DEFAULT_TRACK_PERFORMANCE_PERCENTAGE = 0;
+
     // defaults
     public static final Boolean DEFAULT_AUTO_RESUME_STATE = true;
     public static final String DEFAULT_AUTHORIZER_CONFIGURATION_FILE = "conf/authorizers.xml";
@@ -347,6 +356,7 @@ public class NiFiProperties extends ApplicationProperties {
     public static final int DEFAULT_WEB_MAX_ACCESS_TOKEN_REQUESTS_PER_SECOND = 25;
     public static final String DEFAULT_WEB_REQUEST_TIMEOUT = "60 secs";
     public static final String DEFAULT_NAR_WORKING_DIR = "./work/nar";
+    public static final boolean DEFAULT_UNPACK_NARS_TO_UBER_JAR = false;
     public static final String DEFAULT_COMPONENT_DOCS_DIRECTORY = "./work/docs/components";
     public static final String DEFAULT_NAR_LIBRARY_DIR = "./lib";
     public static final String DEFAULT_NAR_LIBRARY_AUTOLOAD_DIR = "./extensions";
@@ -363,6 +373,7 @@ public class NiFiProperties extends ApplicationProperties {
     public static final String DEFAULT_ZOOKEEPER_SESSION_TIMEOUT = "3 secs";
     public static final String DEFAULT_ZOOKEEPER_ROOT_NODE = "/nifi";
     public static final boolean DEFAULT_ZOOKEEPER_CLIENT_SECURE = false;
+    public static final boolean DEFAULT_ZOOKEEPER_CLIENT_ENSEMBLE_TRACKER = true;
     public static final String DEFAULT_ZOOKEEPER_AUTH_TYPE = "default";
     public static final String DEFAULT_ZOOKEEPER_KERBEROS_REMOVE_HOST_FROM_PRINCIPAL = "true";
     public static final String DEFAULT_ZOOKEEPER_KERBEROS_REMOVE_REALM_FROM_PRINCIPAL = "true";
@@ -511,7 +522,7 @@ public class NiFiProperties extends ApplicationProperties {
         try {
             return Integer.parseInt(value.trim());
         } catch (final Exception e) {
-            logger.warn("Configured value is invalid, falling back to default value", e);
+            logger.warn("Configured value for property {} in nifi.properties is invalid, falling back to default value", propertyName, e);
             return defaultValue;
         }
     }
@@ -691,6 +702,15 @@ public class NiFiProperties extends ApplicationProperties {
         return sslPort;
     }
 
+    /**
+     * Is HTTP without TLS enabled based on configuring nifi.web.http.port property
+     *
+     * @return HTTP enabled status
+     */
+    public boolean isHttpEnabled() {
+        return getPort() != null;
+    }
+
     public boolean isHTTPSConfigured() {
         return getSslPort() != null;
     }
@@ -769,6 +789,14 @@ public class NiFiProperties extends ApplicationProperties {
 
     public File getNarWorkingDirectory() {
         return new File(getProperty(NAR_WORKING_DIRECTORY, DEFAULT_NAR_WORKING_DIR));
+    }
+
+    public boolean isUnpackNarsToUberJar() {
+        final String propertyValue = getProperty(UNPACK_NARS_TO_UBER_JAR);
+        if (propertyValue == null) {
+            return DEFAULT_UNPACK_NARS_TO_UBER_JAR;
+        }
+        return Boolean.parseBoolean(propertyValue);
     }
 
     public File getFrameworkWorkingDirectory() {
@@ -1121,6 +1149,17 @@ public class NiFiProperties extends ApplicationProperties {
      */
     public String getOidcClaimIdentifyingUser() {
         return getProperty(SECURITY_USER_OIDC_CLAIM_IDENTIFYING_USER, "email").trim();
+    }
+
+    /**
+     * Returns the claim to be used to extract user groups from the OIDC payload.
+     * Claim must be requested by adding the scope for it.
+     * Default is 'groups'.
+     *
+     * @return The claim to be used to extract user groups.
+     */
+    public String getOidcClaimGroups() {
+        return getProperty(NIFI_SECURITY_USER_OIDC_CLAIM_GROUPS, "groups").trim();
     }
 
     /**
@@ -1556,6 +1595,18 @@ public class NiFiProperties extends ApplicationProperties {
         return getProperty(STATE_MANAGEMENT_CLUSTER_PROVIDER_ID);
     }
 
+    public int getPerformanceMetricTrackingPercentage() {
+        final int percentage = getIntegerProperty(TRACK_PERFORMANCE_PERCENTAGE, DEFAULT_TRACK_PERFORMANCE_PERCENTAGE);
+        if (percentage < 0) {
+            return 0;
+        }
+        if (percentage > 100) {
+            return 100;
+        }
+
+        return percentage;
+    }
+
     public File getEmbeddedZooKeeperPropertiesFile() {
         final String filename = getProperty(STATE_MANAGEMENT_ZOOKEEPER_PROPERTIES);
         return filename == null ? null : new File(filename);
@@ -1671,6 +1722,17 @@ public class NiFiProperties extends ApplicationProperties {
         }
 
         return Boolean.parseBoolean(clientSecure);
+    }
+
+    public boolean isZookeeperClientWithEnsembleTracker() {
+        final String defaultValue = String.valueOf(DEFAULT_ZOOKEEPER_CLIENT_ENSEMBLE_TRACKER);
+        final String withEnsembleTracker = getProperty(ZOOKEEPER_CLIENT_ENSEMBLE_TRACKER, defaultValue).trim();
+
+        if (!"true".equalsIgnoreCase(withEnsembleTracker) && !"false".equalsIgnoreCase(withEnsembleTracker)) {
+            throw new RuntimeException(String.format("%s was '%s', expected true or false", NiFiProperties.ZOOKEEPER_CLIENT_ENSEMBLE_TRACKER, withEnsembleTracker));
+        }
+
+        return Boolean.parseBoolean(withEnsembleTracker);
     }
 
     public boolean isZooKeeperTlsConfigurationPresent() {

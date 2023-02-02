@@ -38,13 +38,12 @@ import org.apache.nifi.parameter.ParameterReferenceManager;
 import org.apache.nifi.parameter.StandardParameterContext;
 import org.apache.nifi.provenance.MockProvenanceRepository;
 import org.apache.nifi.registry.VariableRegistry;
-import org.apache.nifi.registry.flow.FlowRegistryClient;
 import org.apache.nifi.registry.variable.FileBasedVariableRegistry;
 import org.apache.nifi.reporting.BulletinRepository;
 import org.apache.nifi.util.NiFiProperties;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.w3c.dom.Document;
 
@@ -57,8 +56,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class StandardFlowSerializerTest {
 
@@ -80,7 +79,7 @@ public class StandardFlowSerializerTest {
     private ExtensionDiscoveringManager extensionManager;
     private StandardFlowSerializer serializer;
 
-    @Before
+    @BeforeEach
     public void setUp() throws Exception {
         final FlowFileEventRepository flowFileEventRepo = Mockito.mock(FlowFileEventRepository.class);
         final AuditService auditService = Mockito.mock(AuditService.class);
@@ -101,15 +100,23 @@ public class StandardFlowSerializerTest {
 
         final BulletinRepository bulletinRepo = Mockito.mock(BulletinRepository.class);
         controller = FlowController.createStandaloneInstance(flowFileEventRepo, nifiProperties, authorizer,
-            auditService, encryptor, bulletinRepo, variableRegistry, Mockito.mock(FlowRegistryClient.class), extensionManager, Mockito.mock(StatusHistoryRepository.class));
+            auditService, encryptor, bulletinRepo, variableRegistry, extensionManager, Mockito.mock(StatusHistoryRepository.class));
 
         serializer = new StandardFlowSerializer();
     }
 
-    @After
+    @AfterEach
     public void after() throws Exception {
         controller.shutdown(true);
         FileUtils.deleteDirectory(new File("./target/standardflowserializertest"));
+    }
+
+    private static ParameterContext createParameterContext(final String id, final String name) {
+        return new StandardParameterContext.Builder()
+                .id(id)
+                .name(name)
+                .parameterReferenceManager(ParameterReferenceManager.EMPTY)
+                .build();
     }
 
     @Test
@@ -120,9 +127,9 @@ public class StandardFlowSerializerTest {
         dummy.setComments(RAW_COMMENTS);
         controller.getFlowManager().getRootGroup().addProcessor(dummy);
 
-        final ParameterContext parameterContext = new StandardParameterContext("context", "Context", ParameterReferenceManager.EMPTY, null);
-        final ParameterContext referencedContext = new StandardParameterContext("referenced-context", "Referenced Context", ParameterReferenceManager.EMPTY, null);
-        final ParameterContext referencedContext2 = new StandardParameterContext("referenced-context-2", "Referenced Context 2", ParameterReferenceManager.EMPTY, null);
+        final ParameterContext parameterContext = createParameterContext("context", "Context");
+        final ParameterContext referencedContext = createParameterContext("referenced-context", "Referenced Context");
+        final ParameterContext referencedContext2 = createParameterContext("referenced-context-2", "Referenced Context 2");
         final Map<String, Parameter> parameters = new HashMap<>();
         final ParameterDescriptor parameterDescriptor = new ParameterDescriptor.Builder().name("foo").sensitive(true).build();
         parameters.put("foo", new Parameter(parameterDescriptor, "value"));
